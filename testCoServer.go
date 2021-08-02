@@ -11,6 +11,7 @@ import (
 )
 
 var count = 0
+var processLimitChan = make(chan int, 1000)
 
 func main() {
 	arguments := os.Args
@@ -89,7 +90,7 @@ func tcpListener(PORT string) {
 }
 
 func udpListener(PORT string) {
-	var processLimitChan chan int = make(chan int, 10)
+	buffer := make([]byte, 1024)
 	serverAddress, err := net.ResolveUDPAddr("udp4", PORT)
 	if err != nil {
 		fmt.Println(err)
@@ -98,8 +99,24 @@ func udpListener(PORT string) {
 	listenerConnection, err := net.ListenUDP("udp4", serverAddress)
 	defer listenerConnection.Close()
 	for {
-		go handleUDPConnection(listenerConnection, processLimitChan)
-		message := <-processLimitChan
-		fmt.Println(message)
+		n, clientAddress, err := listenerConnection.ReadFromUDP(buffer)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		fmt.Println("Received message from client: " + string(buffer[0:n-1]))
+		if strings.TrimSpace(string(buffer[0:n])) == "STOP" {
+			fmt.Println("UDP client has exited!")
+			break
+		}
+		data := []byte("UDP server acknowledges!")
+		v, err := listenerConnection.WriteToUDP(data, clientAddress)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		fmt.Print(v)
+		count++
+		processLimitChan <- count
 	}
 }

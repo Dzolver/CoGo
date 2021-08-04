@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ var wg sync.WaitGroup
 
 func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoClient *mongo.Client) {
 	fmt.Print(".")
+	clientResponse := "DEFAULT"
 	for {
 		netData, err := bufio.NewReader(clientConnection).ReadString('\n')
 		if err != nil {
@@ -32,7 +34,6 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		data := strings.TrimSpace(string(netData))
 		packetCode := data[0:2]
 		rcvMessage := strings.Replace(data, packetCode, "", -1)
-		clientResponse := ""
 		if packetCode == "L#" {
 			fmt.Println("Login packet received!")
 			username := strings.Split(rcvMessage, "?")[0]
@@ -46,15 +47,14 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			//THIS NEEDS TO BE REDIRECTED TO A REGISTER FUNCTION
 			clientResponse = handleRegistration(username, password, mongoClient)
 		}
-
+		fmt.Println("Sent message back to client : ", clientResponse)
 		fmt.Println("Received message from client : ", rcvMessage)
 		if rcvMessage == "STOP" {
 			fmt.Println("Client connection has exited")
 			count--
 			break
 		}
-		//counter := strconv.Itoa(count) + "\n"
-		clientConnection.Write([]byte(clientResponse + "\n"))
+		clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
 	}
 	clientConnection.Close()
 }

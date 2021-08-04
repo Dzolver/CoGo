@@ -7,7 +7,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,19 +32,19 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		data := strings.TrimSpace(string(netData))
 		packetCode := data[0:2]
 		rcvMessage := strings.Replace(data, packetCode, "", -1)
-
+		clientResponse := ""
 		if packetCode == "L#" {
 			fmt.Println("Login packet received!")
 			username := strings.Split(rcvMessage, "?")[0]
 			password := strings.Split(rcvMessage, "?")[1]
-			handleLogin(username, password, mongoClient)
+			clientResponse = handleLogin(username, password, mongoClient)
 		}
 		if packetCode == "R#" {
 			fmt.Println("Register packet received!")
 			username := strings.Split(rcvMessage, "?")[0]
 			password := strings.Split(rcvMessage, "?")[1]
 			//THIS NEEDS TO BE REDIRECTED TO A REGISTER FUNCTION
-			handleLogin(username, password, mongoClient)
+			clientResponse = handleRegistration(username, password, mongoClient)
 		}
 
 		fmt.Println("Received message from client : ", rcvMessage)
@@ -54,8 +53,8 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			count--
 			break
 		}
-		counter := strconv.Itoa(count) + "\n"
-		clientConnection.Write([]byte(string(counter)))
+		//counter := strconv.Itoa(count) + "\n"
+		clientConnection.Write([]byte(clientResponse + "\n"))
 	}
 	clientConnection.Close()
 }
@@ -133,20 +132,32 @@ func findMongoDataExample(cxt context.Context, mongoClient *mongo.Client) {
 	}
 	fmt.Println("Data found from DB: ", filterResult[0]["name"], " scored ", filterResult[0]["score"], " points!")
 }
-func handleLogin(username string, password string, mongoClient *mongo.Client) {
+func handleLogin(username string, password string, mongoClient *mongo.Client) string {
 	if !lookForUser(username, mongoClient) {
-		createUser(username, password, mongoClient)
 		if validateUser(username, password, mongoClient) {
 			fmt.Println("Login successful!")
+			return "Login successful"
 		} else {
 			fmt.Println("Login failed!")
+			return "Login Failed"
 		}
 	} else {
 		if validateUser(username, password, mongoClient) {
 			fmt.Println("Login successful!")
+			return "Login Successful"
 		} else {
 			fmt.Println("Login failed!")
+			return "Login failed"
 		}
+	}
+}
+func handleRegistration(username string, password string, mongoClient *mongo.Client) string {
+	if !lookForUser(username, mongoClient) {
+		createUser(username, password, mongoClient)
+		return "Account created"
+	} else {
+		fmt.Println(username, " is not available")
+		return "Username is not available"
 	}
 }
 func createUser(username string, password string, mongoClient *mongo.Client) {

@@ -79,11 +79,39 @@ type Items struct {
 	Crafting   ItemRange `bson:"Crafting,omitempty"`
 	Quest      ItemRange `bson:"Quests,omitempty"`
 }
-type TestItem struct {
-	ObjectID primitive.ObjectID `json:"id,omitempty" bson:"_id,omitempty"`
-	User_id  string             `json:"user_id,omitempty" bson:"user_id,omitempty"`
-	Password string             `json:"password,omitempty" bson:"password,omitempty"`
-	Items    []string           `json:"items,omitempty" bson:"items,omitempty"`
+type PlayerSpellIndex struct {
+	ObjectID    primitive.ObjectID `bson:"_id,omitempty"`
+	User_id     string             `bson:"user_id,omitempty"`
+	Spell_index []Spell            `bson:"spell_index,omitempty"`
+}
+type Spell struct {
+	ObjectID    primitive.ObjectID `bson:"_id,omitempty"`
+	Spell_id    string             `bson:"spell_id,omitempty"`
+	Name        string             `bson:"name,omitempty"`
+	Mana_cost   int32              `bson:"mana_cost,omitempty"`
+	Spell_type  string             `bson:"spell_type,omitempty"`
+	Targetable  string             `bson:"targetable,omitempty"`
+	Spell       string             `bson:"spell,omitempty"`
+	Damage      int32              `bson:"damage,omitempty"`
+	Element     string             `bson:"element,omitempty"`
+	Level       int32              `bson:"level,omitempty"`
+	Init_block  int32              `bson:"init_block,omitempty"`
+	Block_count int32              `bson:"block_count,omitempty"`
+	Effect      Effect             `bson:"effect,omitempty"`
+}
+type Effect struct {
+	Name             string `bson:"name,omitempty"`
+	Effect_id        string `bson:"effect_id,omitempty"`
+	Element          string `bson:"element,omitempty"`
+	Effect_type      string `bson:"effect_type,omitempty"`
+	Buff_element     string `bson:"buff_element,omitempty"`
+	Debuff_element   string `bson:"debuff_element,omitempty"`
+	Damage_per_cycle int32  `bson:"damage_per_cycle,omitempty"`
+	Lifetime         int32  `bson:"lifetime,omitempty"`
+	Ticks_left       int32  `bson:"ticks_left,omitempty"`
+	Scalar           int32  `bson:"scalar,omitempty"`
+	Description      string `bson:"description,omitempty"`
+	Effector         string `bson:"effector,omitempty"`
 }
 
 var count = 0
@@ -311,6 +339,29 @@ func addInventoryItem(userID string, itemID string, mongoClient *mongo.Client) s
 	}
 	return "Item does not exist!"
 }
+func addSpell(userID string, spellID string, mongoClient *mongo.Client) string {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("player")
+	inventory := database.Collection("spellIndex")
+	retrievedSpell, spellFound := getSpell(spellID, mongoClient)
+	if spellFound {
+		entryArea := "spell_index"
+		match := bson.M{"user_id": userID}
+		change := bson.M{"$push": bson.M{entryArea: retrievedSpell}}
+		updateResponse, err := inventory.UpdateOne(cxt, match, change)
+		fmt.Println(updateResponse)
+		if err != nil {
+			fmt.Println(err)
+			return "Spell addition failed!"
+		}
+		return "Spell added successfully!"
+	}
+	return "Spell does not exist!"
+}
 
 func getInventory(userID string, mongoClient *mongo.Client) (*PlayerInventory, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -360,6 +411,31 @@ func getItem(itemID string, mongoClient *mongo.Client) (*Item, bool) {
 	retrievedItem := itemResult[0]
 	return &retrievedItem, true
 }
+func getSpell(spellID string, mongoClient *mongo.Client) (*Spell, bool) {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("world")
+	spells := database.Collection("spells")
+	filterCursor, err := spells.Find(cxt, bson.M{"spell_id": spellID})
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+	var spellResult []Spell
+	if err = filterCursor.All(cxt, &spellResult); err != nil {
+		log.Fatal(err)
+	}
+	if len(spellResult) == 0 {
+		fmt.Println("Item not found!")
+		emptyItem := new(Spell)
+		return emptyItem, false
+	}
+	retrievedItem := spellResult[0]
+	return &retrievedItem, true
+}
 
 func main() {
 	arguments := os.Args
@@ -384,7 +460,8 @@ func main() {
 			panic(err)
 		}
 	}()
-	addInventoryItem("testUser", "WizardRobe", mongoClient)
+	//addInventoryItem("testUser", "WizardRobe", mongoClient)
+	//addSpell("testUser", "Fireball", mongoClient)
 	PORT := ":" + arguments[1]
 
 	// add to sync.WaitGroup

@@ -198,24 +198,6 @@ func udpListener(PORT string) {
 	}
 }
 
-func findMongoDataExample(cxt context.Context, mongoClient *mongo.Client) {
-	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
-		panic(err)
-	}
-	fmt.Println("Mongo DB client has been pinged successfully!")
-	database := mongoClient.Database("test")
-	testCollection := database.Collection("test")
-	filterCursor, err := testCollection.Find(cxt, bson.M{"score": 500})
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	var filterResult []bson.M
-	if err = filterCursor.All(cxt, &filterResult); err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("Data found from DB: ", filterResult[0]["name"], " scored ", filterResult[0]["score"], " points!")
-}
 func handleLogin(username string, password string, mongoClient *mongo.Client) string {
 	if !lookForUser(username, mongoClient) {
 		if validateUser(username, password, mongoClient) {
@@ -306,32 +288,31 @@ func validateUser(username string, password string, mongoClient *mongo.Client) b
 	return true
 }
 
-// func addInventoryItem(userID string, itemID string, mongoClient *mongo.Client) string {
-// 	var equipmentMap = map[string]int{"Head":0,"Body":1,"Feet":2,"Weapon":3,"Accessory":4}
-// 	var itemMap = map[string]int{"Consumable":0,"Crafting":1,"Quest":2}
-// 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-// 	defer cancel()
-// 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
-// 		panic(err)
-// 	}
-// 	database := mongoClient.Database("player")
-// 	inventory := database.Collection("users")
-// 	item,itemFound := getItem(itemID, mongoClient)
-// 	query := bson.M{"user_id":userID}
+func addInventoryItem(userID string, itemID string, mongoClient *mongo.Client) string {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("player")
+	inventory := database.Collection("inventory")
+	retrievedItem, itemFound := getItem(itemID, mongoClient)
+	if itemFound {
+		entryArea := "equipment." + retrievedItem.Item_type + ".collection"
+		match := bson.M{"user_id": userID}
+		change := bson.M{"$push": bson.M{entryArea: retrievedItem}}
+		updateResponse, err := inventory.UpdateOne(cxt, match, change)
+		fmt.Println(updateResponse)
+		if err != nil {
+			fmt.Println(err)
+			return "Item addition failed!"
+		}
+		return "Item added successfully!"
+	}
+	return "Item does not exist!"
+}
 
-// 	itemType := bson.M{"type":item["type"]}
-// 	if index, existing := equipmentMap[item["type"]]; existing{
-// 		itemQuery := bson.M{"inventory":bson.M{"equipment"}}
-// 	} else if index, existing:= itemMap[item["type"]]; existing{
-// 		itemQuery := bson.M{"items"}
-// 	}
-
-// 	change := bson.M{"$push":bson.M{"inventory":itemArea}}
-// 	filterCursor, err := inventory.UpdateOne(cxt, bson.M{"user_id": userID},bson.M{$push})
-// 	return "Item added successfully!"
-// }
-
-func inventoryTest(userID string, mongoClient *mongo.Client) {
+func getInventory(userID string, mongoClient *mongo.Client) (*PlayerInventory, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -348,10 +329,12 @@ func inventoryTest(userID string, mongoClient *mongo.Client) {
 	if err = filterCursor.All(cxt, &filterResult); err != nil {
 		log.Fatal(err)
 	}
-
-	fmt.Println(filterResult[0].Purse.Bits)
+	if len(filterResult) == 1 {
+		return &filterResult[0], true
+	}
+	return nil, true
 }
-func getItem(itemID string, mongoClient *mongo.Client) (Item, bool) {
+func getItem(itemID string, mongoClient *mongo.Client) (*Item, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -368,8 +351,14 @@ func getItem(itemID string, mongoClient *mongo.Client) (Item, bool) {
 	if err = filterCursor.All(cxt, &itemResult); err != nil {
 		log.Fatal(err)
 	}
+	if len(itemResult) == 0 {
+		fmt.Println("Item not found!")
+		emptyItem := new(Item)
+		return emptyItem, false
+	}
 	fmt.Println("Item retrieved : ", itemResult[0].Stats.Attack)
-	return itemResult[0], false
+	retrievedItem := itemResult[0]
+	return &retrievedItem, true
 }
 
 func main() {
@@ -395,10 +384,7 @@ func main() {
 			panic(err)
 		}
 	}()
-	//sample mongoDB query
-	findMongoDataExample(cxt, mongoClient)
-	//getItem("WizardHat", mongoClient)
-	inventoryTest("testUser", mongoClient)
+	addInventoryItem("testUser", "WizardRobe", mongoClient)
 	PORT := ":" + arguments[1]
 
 	// add to sync.WaitGroup

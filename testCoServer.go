@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"strconv"
@@ -41,28 +42,28 @@ type Item struct {
 	Stats       Stats              `bson:"stats,omitempty"`
 }
 type Stats struct {
-	Health       float32 `bson:"health,omitempty"`
-	Mana         float32 `bson:"mana,omitempty"`
-	Attack       float32 `bson:"attack,omitempty"`
-	MagicAttack  float32 `bson:"magicAttack,omitempty"`
-	Defense      float32 `bson:"defense,omitempty"`
-	MagicDefense float32 `bson:"magicDefense,omitempty"`
-	Armor        float32 `bson:"armor,omitempty"`
-	Evasion      float32 `bson:"evasion,omitempty"`
-	Accuracy     float32 `bson:"accuracy,omitempty"`
-	Agility      float32 `bson:"agility,omitempty"`
-	Willpower    float32 `bson:"willpower,omitempty"`
-	FireRes      float32 `bson:"fireRes,omitempty"`
-	WaterRes     float32 `bson:"waterRes,omitempty"`
-	EarthRes     float32 `bson:"earthRes,omitempty"`
-	WindRes      float32 `bson:"windRes,omitempty"`
-	IceRes       float32 `bson:"iceRes,omitempty"`
-	EnergyRes    float32 `bson:"energyRes,omitempty"`
-	NatureRes    float32 `bson:"natureRes,omitempty"`
-	PoisonRes    float32 `bson:"poisonRes,omitempty"`
-	MetalRes     float32 `bson:"metalRes,omitempty"`
-	LightRes     float32 `bson:"lightRes,omitempty"`
-	DarkRes      float32 `bson:"darkRes,omitempty"`
+	Health       float32 `bson:"health"`
+	Mana         float32 `bson:"mana"`
+	Attack       float32 `bson:"attack"`
+	MagicAttack  float32 `bson:"magicAttack"`
+	Defense      float32 `bson:"defense"`
+	MagicDefense float32 `bson:"magicDefense"`
+	Armor        float32 `bson:"armor"`
+	Evasion      float32 `bson:"evasion"`
+	Accuracy     float32 `bson:"accuracy"`
+	Agility      float32 `bson:"agility"`
+	Willpower    float32 `bson:"willpower"`
+	FireRes      float32 `bson:"fireRes"`
+	WaterRes     float32 `bson:"waterRes"`
+	EarthRes     float32 `bson:"earthRes"`
+	WindRes      float32 `bson:"windRes"`
+	IceRes       float32 `bson:"iceRes"`
+	EnergyRes    float32 `bson:"energyRes"`
+	NatureRes    float32 `bson:"natureRes"`
+	PoisonRes    float32 `bson:"poisonRes"`
+	MetalRes     float32 `bson:"metalRes"`
+	LightRes     float32 `bson:"lightRes"`
+	DarkRes      float32 `bson:"darkRes"`
 }
 type ItemRange struct {
 	Collection []Item `bson:"collection,omitempty"`
@@ -117,6 +118,10 @@ type Effect struct {
 var count = 0
 var processLimitChan = make(chan int, 1000)
 var wg sync.WaitGroup
+var connectedUsers = make(map[string]bool)
+var portNumbers = make(map[string]int)
+var portNumbersReversed = make(map[string]string)
+var portIndex = 1
 
 func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoClient *mongo.Client) {
 	fmt.Print(".")
@@ -128,17 +133,38 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			return
 		}
 		packetCode, packetMessage := packetDissect(netData)
-		if packetCode == "L#" {
+		if packetCode == "L0#" {
+			clientResponse = packetCode
 			fmt.Println("Login packet received!")
 			username, password := processLoginPacket(packetMessage)
-			clientResponse = handleLogin(username, password, mongoClient)
+			loginResponse, valid := handleLogin(username, password, mongoClient)
+			if valid {
+				clientResponse = "LS#"
+			} else if !valid {
+				clientResponse = "LF#"
+			}
+			//get a good port number for the udplistener and for the client to connect to
+
+			wg.Add(1)
+			designatedPortNumber := getPortFromIndex(portIndex)
+			go udpListener(designatedPortNumber)
+			clientResponse += "?" + loginResponse + "?" + designatedPortNumber
+			portIndex--
 		}
-		if packetCode == "R#" {
+		if packetCode == "R0#" {
+			clientResponse = packetCode
 			fmt.Println("Register packet received!")
 			username, password := processRegisterPacket(packetMessage)
-			clientResponse = handleRegistration(username, password, mongoClient)
+			registerResponse, valid := handleRegistration(username, password, mongoClient)
+			if valid {
+				clientResponse = "RS#"
+			} else if !valid {
+				clientResponse = "RF#"
+			}
+			clientResponse += "?" + registerResponse
 		}
-		if packetCode == "I#" {
+		if packetCode == "I0#" {
+			clientResponse = packetCode
 			fmt.Println("Inventory packet received!")
 			// userID, itemType, itemID := processInventoryPacket(packetMessage)
 			// addInventoryItem(userID, itemType, itemID, mongoClient)
@@ -156,7 +182,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 }
 func packetDissect(netData string) (string, string) {
 	data := strings.TrimSpace(string(netData))
-	packetCode := data[0:2]
+	packetCode := data[0:3]
 	packetMessage := strings.Replace(data, packetCode, "", -1)
 	return packetCode, packetMessage
 }
@@ -226,32 +252,32 @@ func udpListener(PORT string) {
 	}
 }
 
-func handleLogin(username string, password string, mongoClient *mongo.Client) string {
+func handleLogin(username string, password string, mongoClient *mongo.Client) (string, bool) {
 	if !lookForUser(username, mongoClient) {
 		if validateUser(username, password, mongoClient) {
 			fmt.Println("Login successful!")
-			return "Login successful"
+			return "Login successful", true
 		} else {
 			fmt.Println("Login failed!")
-			return "Login Failed"
+			return "Login Failed", false
 		}
 	} else {
 		if validateUser(username, password, mongoClient) {
 			fmt.Println("Login successful!")
-			return "Login Successful"
+			return "Login Successful", true
 		} else {
 			fmt.Println("Login failed!")
-			return "Login failed"
+			return "Login failed", false
 		}
 	}
 }
-func handleRegistration(username string, password string, mongoClient *mongo.Client) string {
+func handleRegistration(username string, password string, mongoClient *mongo.Client) (string, bool) {
 	if !lookForUser(username, mongoClient) {
 		createUser(username, password, mongoClient)
-		return "Account created"
+		return "Account created", true
 	} else {
 		fmt.Println(username, " is not available")
-		return "Username is not available"
+		return "Username is not available", false
 	}
 }
 func createUser(username string, password string, mongoClient *mongo.Client) {
@@ -262,6 +288,7 @@ func createUser(username string, password string, mongoClient *mongo.Client) {
 	createResult, err := users.InsertOne(cxt, bson.D{
 		{"username", username},
 		{"password", password},
+		{"logins", 0},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -311,11 +338,22 @@ func validateUser(username string, password string, mongoClient *mongo.Client) b
 		//no users found
 		return false
 	} else if len(filterResult) == 1 {
+		_, err := users.UpdateOne(
+			cxt,
+			bson.M{"username": username},
+			bson.D{
+				{"$inc", bson.D{{"logins", 1}}},
+			}, options.Update().SetUpsert(true))
+		if err != nil {
+			fmt.Println(err)
+			fmt.Println("Error with incrementing user login amount!")
+			return false
+		}
 		return true
+
 	}
 	return true
 }
-
 func addInventoryItem(userID string, itemID string, mongoClient *mongo.Client) string {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -362,7 +400,6 @@ func addSpell(userID string, spellID string, mongoClient *mongo.Client) string {
 	}
 	return "Spell does not exist!"
 }
-
 func getInventory(userID string, mongoClient *mongo.Client) (*PlayerInventory, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -436,8 +473,38 @@ func getSpell(spellID string, mongoClient *mongo.Client) (*Spell, bool) {
 	retrievedItem := spellResult[0]
 	return &retrievedItem, true
 }
-
+func IsNewUser(userID string) bool {
+	var isNewUser bool
+	if connectedUsers[userID] {
+		isNewUser = false
+	} else {
+		isNewUser = true
+	}
+	return isNewUser
+}
+func createPorts() {
+	min := 10000
+	max := 20000
+	portCandidate := strconv.Itoa(rand.Intn(max-min) + min)
+	if portNumbers[portCandidate] != 0 {
+		createPorts()
+	} else {
+		portNumbers[portCandidate] = portIndex
+		portNumbersReversed[strconv.Itoa(portIndex)] = portCandidate
+		if len(portNumbers) == 2000 {
+			return
+		}
+		portIndex++
+	}
+}
+func getPortFromIndex(index int) string {
+	return portNumbersReversed[strconv.Itoa(index)]
+}
+func getIndexFromPort(port string) string {
+	return strconv.Itoa(portNumbers[port])
+}
 func main() {
+	createPorts()
 	arguments := os.Args
 	if len(arguments) == 1 {
 		fmt.Println("Please provide port")
@@ -467,8 +534,8 @@ func main() {
 	// add to sync.WaitGroup
 	wg.Add(1)
 	go tcpListener(PORT, cxt, mongoClient)
-	wg.Add(1)
-	go udpListener(PORT)
+	//wg.Add(1)
+	//go udpListener(PORT)
 	wg.Wait()
 
 }

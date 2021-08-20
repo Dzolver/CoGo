@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -21,104 +22,104 @@ import (
 )
 
 type User struct {
-	ObjectID primitive.ObjectID `bson:"_id,omitempty"`
-	User_id  string             `default:"",bson:"user_id,omitempty"`
-	Password string             `default:"",bson:"password,omitempty"`
-	Logins   int                `default:"",bson:"logins,omitempty"`
+	ObjectID primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
+	User_id  string             `json:"user_id" default:"" bson:"user_id, omitempty"`
+	Password string             `json:"password" default:"" bson:"password, omitempty"`
+	Logins   int                `json:"logins" default:"" bson:"logins, omitempty"`
 }
 type PlayerInventory struct {
-	ObjectID  primitive.ObjectID `bson:"_id,omitempty"`
-	User_id   string             `default:"",bson:"user_id,omitempty"`
-	Purse     Purse              `bson:"purse,omitempty"`
-	Equipment Equipment          `bson:"equipment,omitempty"`
-	Items     Items              `bson:"items,omitempty"`
+	ObjectID  primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
+	User_id   string             `json:"user_id" default:"" bson:"user_id, omitempty"`
+	Purse     Purse              `json:"purse" bson:"purse, omitempty"`
+	Equipment Equipment          `json:"equipment" bson:"equipment, omitempty"`
+	Items     Items              `json:"items" bson:"items, omitempty"`
 }
 
 type Purse struct {
-	Bits float32 `default:"0", bson:"bits,omitempty"`
+	Bits float32 `default:"0" json:"bits" bson:"bits, omitempty"`
 }
 type Item struct {
-	ObjectID    primitive.ObjectID `bson:"_id,omitempty"`
-	Item_id     string             `bson:"item_id,omitempty"`
-	Item_type   string             `bson:"item_type,omitempty"`
-	Entity      string             `bson:"entity,omitempty"`
-	Name        string             `bson:"name,omitempty"`
-	Num         int32              `bson:"num,omitempty"`
-	Description string             `bson:"description,omitempty"`
-	Stats       Stats              `bson:"stats,omitempty"`
+	ObjectID    primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
+	Item_id     string             `json:"item_id" bson:"item_id, omitempty"`
+	Item_type   string             `json:"item_type" bson:"item_type, omitempty"`
+	Entity      string             `json:"entity" bson:"entity, omitempty"`
+	Name        string             `json:"name" bson:"name, omitempty"`
+	Num         int32              `json:"num" bson:"num, omitempty"`
+	Description string             `json:"description" bson:"description, omitempty"`
+	Stats       Stats              `json:"stats" bson:"stats, omitempty"`
 }
 type Stats struct {
-	Health       float32 `bson:"health"`
-	Mana         float32 `bson:"mana"`
-	Attack       float32 `bson:"attack"`
-	MagicAttack  float32 `bson:"magicAttack"`
-	Defense      float32 `bson:"defense"`
-	MagicDefense float32 `bson:"magicDefense"`
-	Armor        float32 `bson:"armor"`
-	Evasion      float32 `bson:"evasion"`
-	Accuracy     float32 `bson:"accuracy"`
-	Agility      float32 `bson:"agility"`
-	Willpower    float32 `bson:"willpower"`
-	FireRes      float32 `bson:"fireRes"`
-	WaterRes     float32 `bson:"waterRes"`
-	EarthRes     float32 `bson:"earthRes"`
-	WindRes      float32 `bson:"windRes"`
-	IceRes       float32 `bson:"iceRes"`
-	EnergyRes    float32 `bson:"energyRes"`
-	NatureRes    float32 `bson:"natureRes"`
-	PoisonRes    float32 `bson:"poisonRes"`
-	MetalRes     float32 `bson:"metalRes"`
-	LightRes     float32 `bson:"lightRes"`
-	DarkRes      float32 `bson:"darkRes"`
+	Health       float32 `json:"health" bson:"health"`
+	Mana         float32 `json:"mana" bson:"mana"`
+	Attack       float32 `json:"attack" bson:"attack"`
+	MagicAttack  float32 `json:"magicAttack" bson:"magicAttack"`
+	Defense      float32 `json:"defense" bson:"defense"`
+	MagicDefense float32 `json:"magicDefense" bson:"magicDefense"`
+	Armor        float32 `json:"armor" bson:"armor"`
+	Evasion      float32 `json:"evasion" bson:"evasion"`
+	Accuracy     float32 `json:"accuracy" bson:"accuracy"`
+	Agility      float32 `json:"agility" bson:"agility"`
+	Willpower    float32 `json:"willpower" bson:"willpower"`
+	FireRes      float32 `json:"fireRes" bson:"fireRes"`
+	WaterRes     float32 `json:"waterRes" bson:"waterRes"`
+	EarthRes     float32 `json:"earthRes" bson:"earthRes"`
+	WindRes      float32 `json:"windRes" bson:"windRes"`
+	IceRes       float32 `json:"iceRes" bson:"iceRes"`
+	EnergyRes    float32 `json:"energyRes" bson:"energyRes"`
+	NatureRes    float32 `json:"natureRes" bson:"natureRes"`
+	PoisonRes    float32 `json:"poisonRes" bson:"poisonRes"`
+	MetalRes     float32 `json:"metalRes" bson:"metalRes"`
+	LightRes     float32 `json:"lightRes" bson:"lightRes"`
+	DarkRes      float32 `json:"darkRes" bson:"darkRes"`
 }
 type ItemRange struct {
-	Collection []Item `bson:"collection"`
+	Collection []Item `json:"collection" bson:"collection"`
 }
 type Equipment struct {
-	Head      ItemRange `bson:"Head,omitempty"`
-	Body      ItemRange `bson:"Body,omitempty"`
-	Feet      ItemRange `bson:"Feet,omitempty"`
-	Weapon    ItemRange `bson:"Weapon,omitempty"`
-	Accessory ItemRange `bson:"Accessory,omitempty"`
+	Head      ItemRange `json:"head" bson:"Head, omitempty"`
+	Body      ItemRange `json:"body" bson:"Body, omitempty"`
+	Feet      ItemRange `json:"feet" bson:"Feet, omitempty"`
+	Weapon    ItemRange `json:"weapon" bson:"Weapon, omitempty"`
+	Accessory ItemRange `json:"accessory" bson:"Accessory, omitempty"`
 }
 type Items struct {
-	Consumable ItemRange `bson:"Consumable,omitempty"`
-	Crafting   ItemRange `bson:"Crafting,omitempty"`
-	Quest      ItemRange `bson:"Quests,omitempty"`
+	Consumable ItemRange `json:"consumable" bson:"Consumable, omitempty"`
+	Crafting   ItemRange `json:"crafting" bson:"Crafting, omitempty"`
+	Quest      ItemRange `json:"quest" bson:"Quests, omitempty"`
 }
 type PlayerSpellIndex struct {
-	ObjectID    primitive.ObjectID `bson:"_id,omitempty"`
-	User_id     string             `bson:"user_id,omitempty"`
-	Spell_index []Spell            `bson:"spell_index,omitempty"`
+	ObjectID    primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
+	User_id     string             `json:"user_id" bson:"user_id, omitempty"`
+	Spell_index []Spell            `json:"spell_index" bson:"spell_index, omitempty"`
 }
 type Spell struct {
-	ObjectID    primitive.ObjectID `bson:"_id,omitempty"`
-	Spell_id    string             `bson:"spell_id,omitempty"`
-	Name        string             `bson:"name,omitempty"`
-	Mana_cost   int32              `bson:"mana_cost,omitempty"`
-	Spell_type  string             `bson:"spell_type,omitempty"`
-	Targetable  string             `bson:"targetable,omitempty"`
-	Spell       string             `bson:"spell,omitempty"`
-	Damage      int32              `bson:"damage,omitempty"`
-	Element     string             `bson:"element,omitempty"`
-	Level       int32              `bson:"level,omitempty"`
-	Init_block  int32              `bson:"init_block,omitempty"`
-	Block_count int32              `bson:"block_count,omitempty"`
-	Effect      Effect             `bson:"effect,omitempty"`
+	ObjectID    primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
+	Spell_id    string             `json:"spell_id" bson:"spell_id, omitempty"`
+	Name        string             `json:"name" bson:"name, omitempty"`
+	Mana_cost   int32              `json:"mana_cost" bson:"mana_cost, omitempty"`
+	Spell_type  string             `json:"spell_type" bson:"spell_type, omitempty"`
+	Targetable  string             `json:"targetable" bson:"targetable, omitempty"`
+	Spell       string             `json:"spell" bson:"spell, omitempty"`
+	Damage      int32              `json:"damage" bson:"damage, omitempty"`
+	Element     string             `json:"element" bson:"element, omitempty"`
+	Level       int32              `json:"level" bson:"level, omitempty"`
+	Init_block  int32              `json:"init_block" bson:"init_block, omitempty"`
+	Block_count int32              `json:"block_count" bson:"block_count, omitempty"`
+	Effect      Effect             `json:"effect" bson:"effect, omitempty"`
 }
 type Effect struct {
-	Name             string `bson:"name,omitempty"`
-	Effect_id        string `bson:"effect_id,omitempty"`
-	Element          string `bson:"element,omitempty"`
-	Effect_type      string `bson:"effect_type,omitempty"`
-	Buff_element     string `bson:"buff_element,omitempty"`
-	Debuff_element   string `bson:"debuff_element,omitempty"`
-	Damage_per_cycle int32  `bson:"damage_per_cycle,omitempty"`
-	Lifetime         int32  `bson:"lifetime,omitempty"`
-	Ticks_left       int32  `bson:"ticks_left,omitempty"`
-	Scalar           int32  `bson:"scalar,omitempty"`
-	Description      string `bson:"description,omitempty"`
-	Effector         string `bson:"effector,omitempty"`
+	Name             string `json:"name" bson:"name, omitempty"`
+	Effect_id        string `json:"effect_id" bson:"effect_id, omitempty"`
+	Element          string `json:"element" bson:"element, omitempty"`
+	Effect_type      string `json:"effect_type" bson:"effect_type, omitempty"`
+	Buff_element     string `json:"buff_element" bson:"buff_element, omitempty"`
+	Debuff_element   string `json:"debuff_element" bson:"debuff_element, omitempty"`
+	Damage_per_cycle int32  `json:"damage_per_cycle" bson:"damage_per_cycle, omitempty"`
+	Lifetime         int32  `json:"lifetime" bson:"lifetime, omitempty"`
+	Ticks_left       int32  `json:"ticks_left" bson:"ticks_left, omitempty"`
+	Scalar           int32  `json:"scalar" bson:"scalar, omitempty"`
+	Description      string `json:"description" bson:"description, omitempty"`
+	Effector         string `json:"effector" bson:"effector, omitempty"`
 }
 
 var count = 0
@@ -158,6 +159,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			go udpListener(designatedPortNumber)
 			clientResponse += "?" + loginResponse + "?" + designatedPortNumber
 			portIndex--
+			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
 		}
 		//Register
 		if packetCode == "R0#" {
@@ -173,6 +175,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 				clientResponse = "RF#"
 			}
 			clientResponse += "?" + registerResponse
+			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
 		}
 		//Inventory add
 		if packetCode == "IA#" {
@@ -180,6 +183,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			fmt.Println("Add Inventory packet received!")
 			userID, itemID := processInventoryPacket(packetMessage)
 			addInventoryItem(userID, itemID, mongoClient)
+			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
 		}
 		//Inventory delete
 		if packetCode == "ID#" {
@@ -202,15 +206,24 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 				clientResponse = "IS#"
 				clientResponse += "?Message from server : Inventory created succcesfully"
 			}
+			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
+		}
+		if packetCode == "IR#" {
+			clientResponse = packetCode
+			fmt.Println("Read Inventory packet received!")
+			userID := strings.Split(packetMessage, "?")[0]
+			inventory, _ := getInventory(userID, mongoClient)
+			inventoryJSON, _ := json.Marshal(inventory)
+			clientResponse += "?" + string(inventoryJSON)
+			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
 		}
 		fmt.Println("Sent message back to client : ", clientResponse)
-		fmt.Println("Received message from client : ", packetMessage)
 		if packetMessage == "STOP" {
 			fmt.Println("Client connection has exited")
 			count--
 			break
 		}
-		clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
+
 	}
 	clientConnection.Close()
 }
@@ -612,7 +625,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
+	// addInventoryItem("asd", "WizardHat", mongoClient)
+	// addInventoryItem("asd", "WizardHat", mongoClient)
 	//disconnect mongoDB client on return
 	defer func() {
 		if err = mongoClient.Disconnect(cxt); err != nil {

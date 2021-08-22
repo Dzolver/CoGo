@@ -133,6 +133,7 @@ var portIndex = 1
 func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoClient *mongo.Client) {
 	fmt.Print(".")
 	clientResponse := "DEFAULT"
+	byteLimiter := 1024
 	for {
 		netData, err := bufio.NewReader(clientConnection).ReadString('\n')
 		if err != nil {
@@ -209,13 +210,45 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
 		}
 		if packetCode == "IR#" {
-			clientResponse = packetCode
 			fmt.Println("Read Inventory packet received!")
 			userID := strings.Split(packetMessage, "?")[0]
 			inventory, _ := getInventory(userID, mongoClient)
 			inventoryJSON, _ := json.Marshal(inventory)
-			clientResponse += "?" + string(inventoryJSON)
-			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
+			inventoryData := "?" + string(inventoryJSON)
+			totalInventoryByteData := []byte(strings.Trim(strconv.QuoteToASCII(inventoryData), "\""))
+			inventoryPartitions := len(totalInventoryByteData) / byteLimiter
+			fullPartitions := 0
+			remainingBytes := len(totalInventoryByteData) % byteLimiter
+			if remainingBytes >= 1 {
+				fullPartitions = inventoryPartitions
+				inventoryPartitions++
+			}
+			for i := 1; i <= inventoryPartitions; i++ {
+				base := "IR"
+				start := 0
+				end := 0
+				currentPartition := strconv.Itoa(i)
+				constructedPacketCode := base + currentPartition + strconv.Itoa(inventoryPartitions) + "#"
+				//[0 : 1024] -> [1024 : 2048]
+				start = (i - 1) * byteLimiter
+				if i > fullPartitions {
+					end = len(totalInventoryByteData)
+				} else {
+					end = (i) * byteLimiter
+				}
+				partitionedInventory := totalInventoryByteData[start:end]
+				clientResponse = ""
+				if i > 1 {
+					clientResponse = constructedPacketCode + "?" + string(partitionedInventory)
+				} else {
+					clientResponse = constructedPacketCode + string(partitionedInventory)
+				}
+				fmt.Println("(INVENTORY SERVICE) Sent message back to client : ", clientResponse)
+				clientConnection.Write([]byte(clientResponse))
+			}
+			fmt.Println("Size of inventory data in bytes : ", len(totalInventoryByteData))
+			fmt.Println("Size of remaining inventory data in bytes : ", len(totalInventoryByteData)%byteLimiter)
+			fmt.Println("Size of inventory partitions : ", inventoryPartitions)
 		}
 		fmt.Println("Sent message back to client : ", clientResponse)
 		if packetMessage == "STOP" {
@@ -249,7 +282,6 @@ func processInventoryPacket(packetMessage string) (string, string) {
 	itemID := strings.Split(packetMessage, "?")[1]
 	return username, itemID
 }
-
 func tcpListener(PORT string, cxt context.Context, mongoClient *mongo.Client) {
 	listenerConnection, err := net.Listen("tcp", PORT)
 	if err != nil {

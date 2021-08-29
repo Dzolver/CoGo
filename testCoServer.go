@@ -182,8 +182,9 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		if packetCode == "IA#" {
 			clientResponse = packetCode
 			fmt.Println("Add Inventory packet received!")
+			fmt.Println("Packet message : ", packetMessage)
 			userID, itemID := processInventoryPacket(packetMessage)
-			addInventoryItem(userID, itemID, mongoClient)
+			clientResponse += addInventoryItem(userID, itemID, mongoClient)
 			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
 		}
 		//Inventory delete
@@ -195,6 +196,11 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		if packetCode == "IU#" {
 			clientResponse = packetCode
 			fmt.Println("Update Inventory packet received!")
+			fmt.Println("Packet message : ", packetMessage)
+			username, itemID := processInventoryPacket(packetMessage)
+
+			clientResponse += "?" + addInventoryItem(username, itemID, mongoClient)
+			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
 		}
 		//Inventory create
 		if packetCode == "IC#" {
@@ -539,6 +545,7 @@ func createInventory(userID string, mongoClient *mongo.Client) bool {
 	inventory := database.Collection("inventory")
 
 	var freshInventory PlayerInventory
+	freshInventory.ObjectID = primitive.NewObjectID()
 	freshInventory.User_id = userID
 
 	freshInventory.Equipment.Head.Collection = make([]Item, 0)

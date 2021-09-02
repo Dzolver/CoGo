@@ -34,6 +34,17 @@ type PlayerInventory struct {
 	Equipment Equipment          `json:"equipment" bson:"equipment, omitempty"`
 	Items     Items              `json:"items" bson:"items, omitempty"`
 }
+type PlayerLoadout struct {
+	ObjectID    primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
+	User_id     string             `json:"user_id" default:"" bson:"user_id, omitempty"`
+	Head        Item               `json:"head" bson:"Head, omitempty"`
+	Body        Item               `json:"body" bson:"Body, omitempty"`
+	Feet        Item               `json:"feet" bson:"Feet, omitempty"`
+	Weapon      Item               `json:"weapon" bson:"Weapon, omitempty"`
+	Accessory_1 Item               `json:"accessory_1" bson:"Accessory_1, omitempty"`
+	Accessory_2 Item               `json:"accessory_2" bson:"Accessory_2, omitempty"`
+	Accessory_3 Item               `json:"accessory_3" bson:"Accessory_3, omitempty"`
+}
 
 type Purse struct {
 	Bits float32 `default:"0" json:"bits" bson:"bits, omitempty"`
@@ -256,6 +267,21 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			fmt.Println("Size of remaining inventory data in bytes : ", len(totalInventoryByteData)%byteLimiter)
 			fmt.Println("Size of inventory partitions : ", inventoryPartitions)
 		}
+		if packetCode == "LC#" {
+			clientResponse = packetCode
+			fmt.Println("Create loadout packet received!")
+			userID := processBasicPacket(packetMessage)
+			success := createLoadout(userID, mongoClient)
+			clientResponse += "?" + strconv.FormatBool(success)
+			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
+		}
+		if packetCode == "LA#" {
+			clientResponse = packetCode
+			fmt.Println("Add to loadout")
+			userID, itemID := processInventoryPacket(packetMessage)
+			clientResponse += equipItem(userID, itemID, mongoClient)
+			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
+		}
 		fmt.Println("Sent message back to client : ", clientResponse)
 		if packetMessage == "STOP" {
 			fmt.Println("Client connection has exited")
@@ -268,14 +294,18 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 }
 func packetDissect(netData string) (string, string) {
 	data := strings.TrimSpace(string(netData))
-	packetCode := data[0:3]
+	sep := strings.Index(data, "#")
+	packetCode := data[0 : sep+1]
 	packetMessage := strings.Replace(data, packetCode, "", -1)
 	return packetCode, packetMessage
+}
+func processBasicPacket(packetMessage string) string {
+	userID := strings.Split(packetMessage, "?")[0]
+	return userID
 }
 func processLoginPacket(packetMessage string) (string, string) {
 	username := strings.Split(packetMessage, "?")[0]
 	password := strings.Split(packetMessage, "?")[1]
-	fmt.Println(username + " : " + password)
 	return username, password
 }
 func processRegisterPacket(packetMessage string) (string, string) {
@@ -284,6 +314,7 @@ func processRegisterPacket(packetMessage string) (string, string) {
 	return username, password
 }
 func processInventoryPacket(packetMessage string) (string, string) {
+	fmt.Println("inventory packet structure : ", packetMessage)
 	username := strings.Split(packetMessage, "?")[0]
 	itemID := strings.Split(packetMessage, "?")[1]
 	return username, itemID
@@ -566,6 +597,35 @@ func createInventory(userID string, mongoClient *mongo.Client) bool {
 	fmt.Println("Fresh Inventory created for user: ", userID, " insertID: ", insertResult.InsertedID)
 	return true
 }
+func createLoadout(userID string, mongoClient *mongo.Client) bool {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("player")
+	inventory := database.Collection("loadout")
+
+	var freshLoadout PlayerLoadout
+	freshLoadout.ObjectID = primitive.NewObjectID()
+	freshLoadout.User_id = userID
+
+	freshLoadout.Head = Item{}
+	freshLoadout.Body = Item{}
+	freshLoadout.Feet = Item{}
+	freshLoadout.Weapon = Item{}
+	freshLoadout.Accessory_1 = Item{}
+	freshLoadout.Accessory_2 = Item{}
+	freshLoadout.Accessory_3 = Item{}
+
+	insertResult, err := inventory.InsertOne(cxt, freshLoadout)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+	fmt.Println("Fresh Loadout created for user: ", userID, " insertID: ", insertResult.InsertedID)
+	return true
+}
 func getItem(itemID string, mongoClient *mongo.Client) (*Item, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -588,9 +648,36 @@ func getItem(itemID string, mongoClient *mongo.Client) (*Item, bool) {
 		emptyItem := new(Item)
 		return emptyItem, false
 	}
-	fmt.Println("Item retrieved : ", itemResult[0].Stats.Attack)
+	fmt.Println("Item retrieved : ", itemResult[0].Item_id)
 	retrievedItem := itemResult[0]
 	return &retrievedItem, true
+}
+
+func equipItem(userID string, itemID string, mongoClient *mongo.Client) string {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("player")
+	loadout := database.Collection("loadout")
+	retrievedItem, itemFound := getItem(itemID, mongoClient)
+	if itemFound {
+		entryArea := retrievedItem.Item_type
+		match := bson.M{"user_id": userID}
+		change := bson.M{"$set": bson.M{entryArea: retrievedItem}}
+		updateResponse, err := loadout.UpdateOne(cxt, match, change)
+		fmt.Println(updateResponse)
+		if err != nil {
+			fmt.Println(err)
+			return "Loadout update failed!"
+		}
+		return "Loadout updated successfully!"
+	}
+	return "equipItem"
+}
+func unequipItem(userID string, itemID string, mongoClient *mongo.Client) string {
+	return "unequipItem"
 }
 func getSpell(spellID string, mongoClient *mongo.Client) (*Spell, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)

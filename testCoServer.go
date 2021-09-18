@@ -60,28 +60,28 @@ type Item struct {
 	Stats       Stats              `json:"stats" bson:"stats, omitempty"`
 }
 type Stats struct {
-	Health       float32 `json:"health" bson:"health"`
-	Mana         float32 `json:"mana" bson:"mana"`
-	Attack       float32 `json:"attack" bson:"attack"`
-	MagicAttack  float32 `json:"magicAttack" bson:"magicAttack"`
-	Defense      float32 `json:"defense" bson:"defense"`
-	MagicDefense float32 `json:"magicDefense" bson:"magicDefense"`
-	Armor        float32 `json:"armor" bson:"armor"`
-	Evasion      float32 `json:"evasion" bson:"evasion"`
-	Accuracy     float32 `json:"accuracy" bson:"accuracy"`
-	Agility      float32 `json:"agility" bson:"agility"`
-	Willpower    float32 `json:"willpower" bson:"willpower"`
-	FireRes      float32 `json:"fireRes" bson:"fireRes"`
-	WaterRes     float32 `json:"waterRes" bson:"waterRes"`
-	EarthRes     float32 `json:"earthRes" bson:"earthRes"`
-	WindRes      float32 `json:"windRes" bson:"windRes"`
-	IceRes       float32 `json:"iceRes" bson:"iceRes"`
-	EnergyRes    float32 `json:"energyRes" bson:"energyRes"`
-	NatureRes    float32 `json:"natureRes" bson:"natureRes"`
-	PoisonRes    float32 `json:"poisonRes" bson:"poisonRes"`
-	MetalRes     float32 `json:"metalRes" bson:"metalRes"`
-	LightRes     float32 `json:"lightRes" bson:"lightRes"`
-	DarkRes      float32 `json:"darkRes" bson:"darkRes"`
+	Health       float64 `json:"health" bson:"health"`
+	Mana         float64 `json:"mana" bson:"mana"`
+	Attack       float64 `json:"attack" bson:"attack"`
+	MagicAttack  float64 `json:"magicAttack" bson:"magicAttack"`
+	Defense      float64 `json:"defense" bson:"defense"`
+	MagicDefense float64 `json:"magicDefense" bson:"magicDefense"`
+	Armor        float64 `json:"armor" bson:"armor"`
+	Evasion      float64 `json:"evasion" bson:"evasion"`
+	Accuracy     float64 `json:"accuracy" bson:"accuracy"`
+	Agility      float64 `json:"agility" bson:"agility"`
+	Willpower    float64 `json:"willpower" bson:"willpower"`
+	FireRes      float64 `json:"fireRes" bson:"fireRes"`
+	WaterRes     float64 `json:"waterRes" bson:"waterRes"`
+	EarthRes     float64 `json:"earthRes" bson:"earthRes"`
+	WindRes      float64 `json:"windRes" bson:"windRes"`
+	IceRes       float64 `json:"iceRes" bson:"iceRes"`
+	EnergyRes    float64 `json:"energyRes" bson:"energyRes"`
+	NatureRes    float64 `json:"natureRes" bson:"natureRes"`
+	PoisonRes    float64 `json:"poisonRes" bson:"poisonRes"`
+	MetalRes     float64 `json:"metalRes" bson:"metalRes"`
+	LightRes     float64 `json:"lightRes" bson:"lightRes"`
+	DarkRes      float64 `json:"darkRes" bson:"darkRes"`
 }
 type ItemRange struct {
 	Collection []Item `json:"collection" bson:"collection"`
@@ -132,6 +132,21 @@ type Effect struct {
 	Description      string `json:"description" bson:"description, omitempty"`
 	Effector         string `json:"effector" bson:"effector, omitempty"`
 }
+type PlayerProfile struct {
+	ObjectID    primitive.ObjectID `json:"objectID" bson:"_id,omitempty"`
+	User_id     string             `json:"user_id" default:"" bson:"user_id, omitempty"`
+	Name        string             `json:"name" default:"" bson:"name, omitempty"`
+	Level       int                `json:"level" default:"" bson:"level, omitempty"`
+	Age         int                `json:"age" default:"" bson:"age, omitempty"`
+	Title       string             `json:"title" default:"" bson:"title,omitempty"`
+	Current_EXP float64            `json:"current_exp" default:"" bson:"current_exp, omitempty"`
+	Total_EXP   float64            `json:"total_exp" default:"" bson:"total_exp, omitempty"`
+	Max_EXP     float64            `json:"max_exp" default:"" bson:"max_exp, omitempty"`
+	Race_id     string             `json:"race_id" default:"" bson:"race_id, omitempty"`
+	Race_name   string             `json:"race_name" default:"" bson:"race_name, omitempty"`
+	Class_id    string             `json:"class_id" default:"" bson:"class_id, omitempty"`
+	Class_name  string             `json:"class_name" default:"" bson:"class_name, omitempty"`
+}
 
 var count = 0
 var processLimitChan = make(chan int, 1000)
@@ -152,11 +167,12 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			return
 		}
 		packetCode, packetMessage := packetDissect(netData)
+		fmt.Println(netData)
 		//Login
 		if packetCode == "L0#" {
 			clientResponse = packetCode
 			fmt.Println("Login packet received!")
-			username, password := processLoginPacket(packetMessage)
+			username, password := processTier2Packet(packetMessage)
 			loginResponse, valid := handleLogin(username, password, mongoClient)
 			if valid {
 				//Login success
@@ -171,13 +187,13 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			go udpListener(designatedPortNumber)
 			clientResponse += "?" + loginResponse + "?" + designatedPortNumber
 			portIndex--
-			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
+			writeResponse(clientResponse, clientConnection)
 		}
 		//Register
 		if packetCode == "R0#" {
 			clientResponse = packetCode
 			fmt.Println("Register packet received!")
-			username, password := processRegisterPacket(packetMessage)
+			username, password := processTier2Packet(packetMessage)
 			registerResponse, valid := handleRegistration(username, password, mongoClient)
 			if valid {
 				//Register success
@@ -187,16 +203,16 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 				clientResponse = "RF#"
 			}
 			clientResponse += "?" + registerResponse
-			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
+			writeResponse(clientResponse, clientConnection)
 		}
 		//Inventory add
 		if packetCode == "IA#" {
 			clientResponse = packetCode
 			fmt.Println("Add Inventory packet received!")
 			fmt.Println("Packet message : ", packetMessage)
-			userID, itemID := processInventoryPacket(packetMessage)
+			userID, itemID := processTier2Packet(packetMessage)
 			clientResponse += addInventoryItem(userID, itemID, mongoClient)
-			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
+			writeResponse(clientResponse, clientConnection)
 		}
 		//Inventory delete
 		if packetCode == "ID#" {
@@ -208,10 +224,10 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			clientResponse = packetCode
 			fmt.Println("Update Inventory packet received!")
 			fmt.Println("Packet message : ", packetMessage)
-			username, itemID := processInventoryPacket(packetMessage)
+			username, itemID := processTier2Packet(packetMessage)
 
 			clientResponse += "?" + addInventoryItem(username, itemID, mongoClient)
-			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
+			writeResponse(clientResponse, clientConnection)
 		}
 		//Inventory create
 		if packetCode == "IC#" {
@@ -224,7 +240,18 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 				clientResponse = "IS#"
 				clientResponse += "?Message from server : Inventory created succcesfully"
 			}
-			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
+			writeResponse(clientResponse, clientConnection)
+		}
+		if packetCode == "CE#" {
+			clientResponse = packetCode
+			fmt.Println("Create Everything packet received!")
+			userID := strings.Split(packetMessage, "?")[0]
+			createInventory(userID, mongoClient)
+			createLoadout(userID, mongoClient)
+			createSpellIndex(userID, mongoClient)
+			createProfile(userID, mongoClient)
+			clientResponse += "?Everything created successfully"
+			writeResponse(clientResponse, clientConnection)
 		}
 		if packetCode == "IR#" {
 			fmt.Println("Read Inventory packet received!")
@@ -232,55 +259,62 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			inventory, _ := getInventory(userID, mongoClient)
 			inventoryJSON, _ := json.Marshal(inventory)
 			inventoryData := "?" + string(inventoryJSON)
-			totalInventoryByteData := []byte(strings.Trim(strconv.QuoteToASCII(inventoryData), "\""))
-			inventoryPartitions := len(totalInventoryByteData) / byteLimiter
-			fullPartitions := 0
-			remainingBytes := len(totalInventoryByteData) % byteLimiter
-			if remainingBytes >= 1 {
-				fullPartitions = inventoryPartitions
-				inventoryPartitions++
-			}
-			for i := 1; i <= inventoryPartitions; i++ {
-				base := "IR"
-				start := 0
-				end := 0
-				currentPartition := strconv.Itoa(i)
-				constructedPacketCode := base + currentPartition + strconv.Itoa(inventoryPartitions) + "#"
-				//[0 : 1024] -> [1024 : 2048]
-				start = (i - 1) * byteLimiter
-				if i > fullPartitions {
-					end = len(totalInventoryByteData)
-				} else {
-					end = (i) * byteLimiter
-				}
-				partitionedInventory := totalInventoryByteData[start:end]
-				clientResponse = ""
-				if i > 1 {
-					clientResponse = constructedPacketCode + "?" + string(partitionedInventory)
-				} else {
-					clientResponse = constructedPacketCode + string(partitionedInventory)
-				}
-				fmt.Println("(INVENTORY SERVICE) Sent message back to client : ", clientResponse)
-				clientConnection.Write([]byte(clientResponse))
-			}
-			fmt.Println("Size of inventory data in bytes : ", len(totalInventoryByteData))
-			fmt.Println("Size of remaining inventory data in bytes : ", len(totalInventoryByteData)%byteLimiter)
-			fmt.Println("Size of inventory partitions : ", inventoryPartitions)
+			chainWriteResponse(packetCode, inventoryData, byteLimiter, clientConnection, "INVENTORY")
 		}
 		if packetCode == "LC#" {
 			clientResponse = packetCode
 			fmt.Println("Create loadout packet received!")
-			userID := processBasicPacket(packetMessage)
+			userID := processTier1Packet(packetMessage)
 			success := createLoadout(userID, mongoClient)
 			clientResponse += "?" + strconv.FormatBool(success)
-			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
+			writeResponse(clientResponse, clientConnection)
 		}
 		if packetCode == "LA#" {
 			clientResponse = packetCode
 			fmt.Println("Add to loadout")
-			userID, itemID := processInventoryPacket(packetMessage)
+			userID, itemID := processTier2Packet(packetMessage)
 			clientResponse += equipItem(userID, itemID, mongoClient)
-			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
+			writeResponse(clientResponse, clientConnection)
+		}
+		if packetCode == "SC#" {
+			clientResponse = packetCode
+			fmt.Println("Spell index creation packet received!")
+			userID := processTier1Packet(packetMessage)
+			success := createSpellIndex(userID, mongoClient)
+			clientResponse += "?" + strconv.FormatBool(success)
+			writeResponse(clientResponse, clientConnection)
+		}
+		if packetCode == "SR#" {
+			fmt.Println("Read Spell Index packet received!")
+			userID := strings.Split(packetMessage, "?")[0]
+			spellIndex, _ := getSpellIndex(userID, mongoClient)
+			spellIndexJSON, _ := json.Marshal(spellIndex)
+			spellIndexData := "?" + string(spellIndexJSON)
+			chainWriteResponse(packetCode, spellIndexData, byteLimiter, clientConnection, "SPELLINDEX")
+		}
+		if packetCode == "SU#" {
+			clientResponse = packetCode
+			fmt.Println("Update Spell Index packet received!")
+			userID, spellID := processTier2Packet(packetMessage)
+			clientResponse += "?" + addSpell(userID, spellID, mongoClient)
+			writeResponse(clientResponse, clientConnection)
+		}
+		if packetCode == "LP#" {
+			clientResponse = packetCode
+			fmt.Println("Load profile packet received!")
+			userID := processTier1Packet(packetMessage)
+			profile, _ := getProfile(userID, mongoClient)
+			profileJSON, _ := json.Marshal(profile)
+			profileData := "?" + string(profileJSON)
+			chainWriteResponse(packetCode, profileData, byteLimiter, clientConnection, "PROFILE")
+		}
+		if packetCode == "UL#" {
+			clientResponse = packetCode
+			fmt.Println("Update EXP packet received!")
+			userID, streamedEXPString := processTier2Packet(packetMessage)
+			streamedEXP, _ := strconv.ParseFloat(streamedEXPString, 64)
+			clientResponse += "?" + updateProfile_EXP(userID, streamedEXP, mongoClient)
+			writeResponse(clientResponse, clientConnection)
 		}
 		fmt.Println("Sent message back to client : ", clientResponse)
 		if packetMessage == "STOP" {
@@ -288,7 +322,6 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			count--
 			break
 		}
-
 	}
 	clientConnection.Close()
 }
@@ -299,25 +332,53 @@ func packetDissect(netData string) (string, string) {
 	packetMessage := strings.Replace(data, packetCode, "", -1)
 	return packetCode, packetMessage
 }
-func processBasicPacket(packetMessage string) string {
-	userID := strings.Split(packetMessage, "?")[0]
-	return userID
+func processTier1Packet(packetMessage string) string {
+	item := strings.Split(packetMessage, "?")[0]
+	return item
 }
-func processLoginPacket(packetMessage string) (string, string) {
-	username := strings.Split(packetMessage, "?")[0]
-	password := strings.Split(packetMessage, "?")[1]
-	return username, password
+func processTier2Packet(packetMessage string) (string, string) {
+	item1 := strings.Split(packetMessage, "?")[0]
+	item2 := strings.Split(packetMessage, "?")[1]
+	return item1, item2
 }
-func processRegisterPacket(packetMessage string) (string, string) {
-	username := strings.Split(packetMessage, "?")[0]
-	password := strings.Split(packetMessage, "?")[1]
-	return username, password
+func writeResponse(clientResponse string, clientConnection net.Conn) {
+	clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
 }
-func processInventoryPacket(packetMessage string) (string, string) {
-	fmt.Println("inventory packet structure : ", packetMessage)
-	username := strings.Split(packetMessage, "?")[0]
-	itemID := strings.Split(packetMessage, "?")[1]
-	return username, itemID
+func chainWriteResponse(packetCode string, totalData string, byteLimiter int, clientConnection net.Conn, serviceType string) {
+	base := strings.Replace(packetCode, "#", "", -1)
+	totalByteData := []byte(strings.Trim(strconv.QuoteToASCII(totalData), "\""))
+	dataPartitions := len(totalByteData) / byteLimiter
+	fullPartitions := 0
+	remainingBytes := len(totalByteData) % byteLimiter
+	if remainingBytes >= 1 {
+		fullPartitions = dataPartitions
+		dataPartitions++
+	}
+	for i := 1; i <= dataPartitions; i++ {
+		start := 0
+		end := 0
+		currentPartition := strconv.Itoa(i)
+		constructedPacketCode := base + currentPartition + strconv.Itoa(dataPartitions) + "#"
+		//[0 : 1024] -> [1024 : 2048]
+		start = (i - 1) * byteLimiter
+		if i > fullPartitions {
+			end = len(totalByteData)
+		} else {
+			end = (i) * byteLimiter
+		}
+		partitionedInventory := totalByteData[start:end]
+		clientResponse := ""
+		if i > 1 {
+			clientResponse = constructedPacketCode + "?" + string(partitionedInventory)
+		} else {
+			clientResponse = constructedPacketCode + string(partitionedInventory)
+		}
+		fmt.Println("("+serviceType+") "+"Sent message back to client : ", clientResponse)
+		clientConnection.Write([]byte(clientResponse))
+	}
+	fmt.Println("Size of ", serviceType, " data in bytes : ", len(totalByteData))
+	fmt.Println("Size of remaining ", serviceType, " in bytes : ", len(totalByteData)%byteLimiter)
+	fmt.Println("Size of ", serviceType, " partitions : ", dataPartitions)
 }
 func tcpListener(PORT string, cxt context.Context, mongoClient *mongo.Client) {
 	listenerConnection, err := net.Listen("tcp", PORT)
@@ -336,7 +397,6 @@ func tcpListener(PORT string, cxt context.Context, mongoClient *mongo.Client) {
 		count++
 	}
 }
-
 func udpListener(PORT string) {
 	buffer := make([]byte, 1024)
 	serverAddress, err := net.ResolveUDPAddr("udp4", PORT)
@@ -373,7 +433,6 @@ func udpListener(PORT string) {
 		processLimitChan <- count
 	}
 }
-
 func handleLogin(username string, password string, mongoClient *mongo.Client) (string, bool) {
 	if !lookForUser(username, mongoClient) {
 		if validateUser(username, password, mongoClient) {
@@ -476,52 +535,6 @@ func validateUser(username string, password string, mongoClient *mongo.Client) b
 	}
 	return true
 }
-func addInventoryItem(userID string, itemID string, mongoClient *mongo.Client) string {
-	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
-		panic(err)
-	}
-	database := mongoClient.Database("player")
-	inventory := database.Collection("inventory")
-	retrievedItem, itemFound := getItem(itemID, mongoClient)
-	if itemFound {
-		entryArea := "equipment." + retrievedItem.Item_type + ".collection"
-		match := bson.M{"user_id": userID}
-		change := bson.M{"$push": bson.M{entryArea: retrievedItem}}
-		updateResponse, err := inventory.UpdateOne(cxt, match, change)
-		fmt.Println(updateResponse)
-		if err != nil {
-			fmt.Println(err)
-			return "Item addition failed!"
-		}
-		return "Item added successfully!"
-	}
-	return "Item does not exist!"
-}
-func addSpell(userID string, spellID string, mongoClient *mongo.Client) string {
-	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
-		panic(err)
-	}
-	database := mongoClient.Database("player")
-	inventory := database.Collection("spellIndex")
-	retrievedSpell, spellFound := getSpell(spellID, mongoClient)
-	if spellFound {
-		entryArea := "spell_index"
-		match := bson.M{"user_id": userID}
-		change := bson.M{"$push": bson.M{entryArea: retrievedSpell}}
-		updateResponse, err := inventory.UpdateOne(cxt, match, change)
-		fmt.Println(updateResponse)
-		if err != nil {
-			fmt.Println(err)
-			return "Spell addition failed!"
-		}
-		return "Spell added successfully!"
-	}
-	return "Spell does not exist!"
-}
 func getLoginInfo(userID string, mongoClient *mongo.Client) int {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -543,6 +556,201 @@ func getLoginInfo(userID string, mongoClient *mongo.Client) int {
 		return filterResult[0].Logins
 	}
 	return 0
+}
+func createProfile(userID string, mongoClient *mongo.Client) bool {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("player")
+	profile := database.Collection("profile")
+
+	var freshProfile PlayerProfile
+	freshProfile.ObjectID = primitive.NewObjectID()
+	freshProfile.User_id = userID
+	freshProfile.Name = userID
+	freshProfile.Level = 1
+	freshProfile.Age = 0
+	freshProfile.Title = "Just a newbie"
+	freshProfile.Current_EXP = 0
+	freshProfile.Total_EXP = 0
+	freshProfile.Max_EXP = 100
+	freshProfile.Race_id = "human"
+	freshProfile.Race_name = "Human"
+	freshProfile.Class_id = "stranger"
+	freshProfile.Class_name = "Stranger"
+
+	insertResult, err := profile.InsertOne(cxt, freshProfile)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+	fmt.Println("Fresh Profile created for user: ", userID, " insertID: ", insertResult.InsertedID)
+	return true
+}
+func getProfile(userID string, mongoClient *mongo.Client) (*PlayerProfile, bool) {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("player")
+	profile := database.Collection("profile")
+	filterCursor, err := profile.Find(cxt, bson.M{"user_id": userID})
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+	var filterResult []PlayerProfile
+	if err = filterCursor.All(cxt, &filterResult); err != nil {
+		log.Fatal(err)
+	}
+	if len(filterResult) == 1 {
+		return &filterResult[0], true
+	}
+	return nil, true
+}
+func updateProfile_EXP(userID string, streamed_exp float64, mongoClient *mongo.Client) string {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	playerProfile, profileFound := getProfile(userID, mongoClient)
+	newTotalExp := playerProfile.Total_EXP + streamed_exp
+	if profileFound {
+		database := mongoClient.Database("player")
+		profile := database.Collection("profile")
+		match := bson.M{"user_id": userID}
+		totalEXP := playerProfile.Current_EXP + streamed_exp
+		if totalEXP >= playerProfile.Max_EXP {
+			bufferEXP := 0.0
+			levelUpperLimit := 0
+			levelUpperLimitEXP := playerProfile.Max_EXP
+			for totalEXP > bufferEXP {
+				levelUpperLimitEXP += float64(levelUpperLimit * 50.0)
+				bufferEXP += playerProfile.Max_EXP + float64(levelUpperLimit*50.0)
+				levelUpperLimit++
+			}
+			newCurrentEXP := levelUpperLimitEXP - (bufferEXP - totalEXP)
+			newLevel := playerProfile.Level + levelUpperLimit
+			newMaxEXP := levelUpperLimitEXP
+			change := bson.D{
+				{"$set", bson.D{{"level", newLevel}, {"current_exp", newCurrentEXP}, {"max_exp", newMaxEXP}, {"total_exp", newTotalExp}}},
+			}
+			_, err := profile.UpdateOne(cxt, match, change)
+			if err != nil {
+				fmt.Println(err)
+				return "Profile level and EXP update failed!"
+			}
+			return "Profile level and EXP updated successfully!"
+		} else if totalEXP < playerProfile.Max_EXP {
+			newCurrentEXP := totalEXP
+			change := bson.D{
+				{"$set", bson.D{{"current_exp", newCurrentEXP}}},
+			}
+			_, err := profile.UpdateOne(cxt, match, change)
+			if err != nil {
+				fmt.Println(err)
+				return "Profile EXP update failed!"
+			}
+			return "Profile EXP updated successfully!"
+		}
+	}
+	return "profile not found"
+}
+func createSpellIndex(userID string, mongoClient *mongo.Client) bool {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("player")
+	spellIndex := database.Collection("spellIndex")
+
+	var freshSpellIndex PlayerSpellIndex
+	freshSpellIndex.ObjectID = primitive.NewObjectID()
+	freshSpellIndex.User_id = userID
+	freshSpellIndex.Spell_index = make([]Spell, 0)
+
+	insertResult, err := spellIndex.InsertOne(cxt, freshSpellIndex)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+	fmt.Println("Fresh Spell index created for user: ", userID, " insertID: ", insertResult.InsertedID)
+	return true
+}
+func getSpellIndex(userID string, mongoClient *mongo.Client) (*PlayerSpellIndex, bool) {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("player")
+	spellIndex := database.Collection("spellIndex")
+	filterCursor, err := spellIndex.Find(cxt, bson.M{"user_id": userID})
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+	var filterResult []PlayerSpellIndex
+	if err = filterCursor.All(cxt, &filterResult); err != nil {
+		log.Fatal(err)
+	}
+	if len(filterResult) == 1 {
+		return &filterResult[0], true
+	}
+	return nil, true
+}
+func addSpell(userID string, spellID string, mongoClient *mongo.Client) string {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("player")
+	spellIndex := database.Collection("spellIndex")
+	retrievedSpell, spellFound := getSpell(spellID, mongoClient)
+	if spellFound {
+		entryArea := "spell_index"
+		match := bson.M{"user_id": userID}
+		change := bson.M{"$push": bson.M{entryArea: retrievedSpell}}
+		updateResponse, err := spellIndex.UpdateOne(cxt, match, change)
+		fmt.Println(updateResponse)
+		if err != nil {
+			fmt.Println(err)
+			return "Spell addition failed!"
+		}
+		return "Spell added successfully!"
+	}
+	return "Spell does not exist!"
+}
+func getSpell(spellID string, mongoClient *mongo.Client) (*Spell, bool) {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("world")
+	spells := database.Collection("spells")
+	filterCursor, err := spells.Find(cxt, bson.M{"spell_id": spellID})
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+	var spellResult []Spell
+	if err = filterCursor.All(cxt, &spellResult); err != nil {
+		log.Fatal(err)
+	}
+	if len(spellResult) == 0 {
+		fmt.Println("Item not found!")
+		emptyItem := new(Spell)
+		return emptyItem, false
+	}
+	retrievedItem := spellResult[0]
+	return &retrievedItem, true
 }
 func getInventory(userID string, mongoClient *mongo.Client) (*PlayerInventory, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -652,7 +860,6 @@ func getItem(itemID string, mongoClient *mongo.Client) (*Item, bool) {
 	retrievedItem := itemResult[0]
 	return &retrievedItem, true
 }
-
 func equipItem(userID string, itemID string, mongoClient *mongo.Client) string {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -679,30 +886,28 @@ func equipItem(userID string, itemID string, mongoClient *mongo.Client) string {
 func unequipItem(userID string, itemID string, mongoClient *mongo.Client) string {
 	return "unequipItem"
 }
-func getSpell(spellID string, mongoClient *mongo.Client) (*Spell, bool) {
+func addInventoryItem(userID string, itemID string, mongoClient *mongo.Client) string {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
 		panic(err)
 	}
-	database := mongoClient.Database("world")
-	spells := database.Collection("spells")
-	filterCursor, err := spells.Find(cxt, bson.M{"spell_id": spellID})
-	if err != nil {
-		fmt.Println(err)
-		panic(err)
+	database := mongoClient.Database("player")
+	inventory := database.Collection("inventory")
+	retrievedItem, itemFound := getItem(itemID, mongoClient)
+	if itemFound {
+		entryArea := "equipment." + retrievedItem.Item_type + ".collection"
+		match := bson.M{"user_id": userID}
+		change := bson.M{"$push": bson.M{entryArea: retrievedItem}}
+		updateResponse, err := inventory.UpdateOne(cxt, match, change)
+		fmt.Println(updateResponse)
+		if err != nil {
+			fmt.Println(err)
+			return "Item addition failed!"
+		}
+		return "Item added successfully!"
 	}
-	var spellResult []Spell
-	if err = filterCursor.All(cxt, &spellResult); err != nil {
-		log.Fatal(err)
-	}
-	if len(spellResult) == 0 {
-		fmt.Println("Item not found!")
-		emptyItem := new(Spell)
-		return emptyItem, false
-	}
-	retrievedItem := spellResult[0]
-	return &retrievedItem, true
+	return "Item does not exist!"
 }
 func IsNewUser(userID string) bool {
 	var isNewUser bool

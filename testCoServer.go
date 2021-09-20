@@ -146,6 +146,7 @@ type PlayerProfile struct {
 	Race_name   string             `json:"race_name" default:"" bson:"race_name, omitempty"`
 	Class_id    string             `json:"class_id" default:"" bson:"class_id, omitempty"`
 	Class_name  string             `json:"class_name" default:"" bson:"class_name, omitempty"`
+	Stats       Stats              `json:"stats" default:"" bson:"stats, omitempty"`
 }
 
 var count = 0
@@ -580,7 +581,29 @@ func createProfile(userID string, mongoClient *mongo.Client) bool {
 	freshProfile.Race_name = "Human"
 	freshProfile.Class_id = "stranger"
 	freshProfile.Class_name = "Stranger"
-
+	freshProfile.Stats.Health = 100
+	freshProfile.Stats.Mana = 100
+	freshProfile.Stats.Attack = 1
+	freshProfile.Stats.MagicAttack = 1
+	freshProfile.Stats.Defense = 1
+	freshProfile.Stats.MagicDefense = 1
+	freshProfile.Stats.Armor = 0
+	freshProfile.Stats.Evasion = 0
+	freshProfile.Stats.Accuracy = 1
+	freshProfile.Stats.Agility = 1
+	freshProfile.Stats.Willpower = 1
+	freshProfile.Stats.FireRes = 0
+	freshProfile.Stats.WaterRes = 0
+	freshProfile.Stats.EarthRes = 0
+	freshProfile.Stats.WindRes = 0
+	freshProfile.Stats.IceRes = 0
+	freshProfile.Stats.EnergyRes = 0
+	freshProfile.Stats.NatureRes = 0
+	freshProfile.Stats.PoisonRes = 0
+	freshProfile.Stats.MetalRes = 0
+	freshProfile.Stats.LightRes = 0
+	freshProfile.Stats.DarkRes = 0
+	
 	insertResult, err := profile.InsertOne(cxt, freshProfile)
 	if err != nil {
 		fmt.Println(err)

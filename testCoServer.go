@@ -133,20 +133,23 @@ type Effect struct {
 	Effector         string `json:"effector" bson:"effector, omitempty"`
 }
 type PlayerProfile struct {
-	ObjectID    primitive.ObjectID `json:"objectID" bson:"_id,omitempty"`
-	User_id     string             `json:"user_id" default:"" bson:"user_id, omitempty"`
-	Name        string             `json:"name" default:"" bson:"name, omitempty"`
-	Level       int                `json:"level" default:"" bson:"level, omitempty"`
-	Age         int                `json:"age" default:"" bson:"age, omitempty"`
-	Title       string             `json:"title" default:"" bson:"title,omitempty"`
-	Current_EXP float64            `json:"current_exp" default:"" bson:"current_exp, omitempty"`
-	Total_EXP   float64            `json:"total_exp" default:"" bson:"total_exp, omitempty"`
-	Max_EXP     float64            `json:"max_exp" default:"" bson:"max_exp, omitempty"`
-	Race_id     string             `json:"race_id" default:"" bson:"race_id, omitempty"`
-	Race_name   string             `json:"race_name" default:"" bson:"race_name, omitempty"`
-	Class_id    string             `json:"class_id" default:"" bson:"class_id, omitempty"`
-	Class_name  string             `json:"class_name" default:"" bson:"class_name, omitempty"`
-	Stats       Stats              `json:"stats" default:"" bson:"stats, omitempty"`
+	Name        string  `json:"name" default:"" bson:"name, omitempty"`
+	Level       int     `json:"level" default:"" bson:"level, omitempty"`
+	Age         int     `json:"age" default:"" bson:"age, omitempty"`
+	Title       string  `json:"title" default:"" bson:"title,omitempty"`
+	Current_EXP float64 `json:"current_exp" default:"" bson:"current_exp, omitempty"`
+	Total_EXP   float64 `json:"total_exp" default:"" bson:"total_exp, omitempty"`
+	Max_EXP     float64 `json:"max_exp" default:"" bson:"max_exp, omitempty"`
+	Race_id     string  `json:"race_id" default:"" bson:"race_id, omitempty"`
+	Race_name   string  `json:"race_name" default:"" bson:"race_name, omitempty"`
+	Class_id    string  `json:"class_id" default:"" bson:"class_id, omitempty"`
+	Class_name  string  `json:"class_name" default:"" bson:"class_name, omitempty"`
+}
+type PlayerVital struct {
+	ObjectID      primitive.ObjectID `json:"objectID" default:"" bson:"_id,omitempty`
+	User_id       string             `json:"user_id" default:"" bson:"user_id, omitempty"`
+	PlayerProfile PlayerProfile      `json:"profile" default:"" bson:"profile,omitempty`
+	Stats         Stats              `json:"stats" default:"" bson:"stats,omitempty`
 }
 
 var count = 0
@@ -250,7 +253,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			createInventory(userID, mongoClient)
 			createLoadout(userID, mongoClient)
 			createSpellIndex(userID, mongoClient)
-			createProfile(userID, mongoClient)
+			createVital(userID, mongoClient)
 			clientResponse += "?Everything created successfully"
 			writeResponse(clientResponse, clientConnection)
 		}
@@ -300,14 +303,14 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			clientResponse += "?" + addSpell(userID, spellID, mongoClient)
 			writeResponse(clientResponse, clientConnection)
 		}
-		if packetCode == "LP#" {
+		if packetCode == "LV#" {
 			clientResponse = packetCode
-			fmt.Println("Load profile packet received!")
+			fmt.Println("Load vital packet received!")
 			userID := processTier1Packet(packetMessage)
-			profile, _ := getProfile(userID, mongoClient)
-			profileJSON, _ := json.Marshal(profile)
-			profileData := "?" + string(profileJSON)
-			chainWriteResponse(packetCode, profileData, byteLimiter, clientConnection, "PROFILE")
+			vital, _ := getVital(userID, mongoClient)
+			vitalJSON, _ := json.Marshal(vital)
+			vitalData := "?" + string(vitalJSON)
+			chainWriteResponse(packetCode, vitalData, byteLimiter, clientConnection, "PROFILE")
 		}
 		if packetCode == "UL#" {
 			clientResponse = packetCode
@@ -558,74 +561,74 @@ func getLoginInfo(userID string, mongoClient *mongo.Client) int {
 	}
 	return 0
 }
-func createProfile(userID string, mongoClient *mongo.Client) bool {
+func createVital(userID string, mongoClient *mongo.Client) bool {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
 		panic(err)
 	}
 	database := mongoClient.Database("player")
-	profile := database.Collection("profile")
+	profile := database.Collection("vital")
 
-	var freshProfile PlayerProfile
-	freshProfile.ObjectID = primitive.NewObjectID()
-	freshProfile.User_id = userID
-	freshProfile.Name = userID
-	freshProfile.Level = 1
-	freshProfile.Age = 0
-	freshProfile.Title = "Just a newbie"
-	freshProfile.Current_EXP = 0
-	freshProfile.Total_EXP = 0
-	freshProfile.Max_EXP = 100
-	freshProfile.Race_id = "human"
-	freshProfile.Race_name = "Human"
-	freshProfile.Class_id = "stranger"
-	freshProfile.Class_name = "Stranger"
-	freshProfile.Stats.Health = 100
-	freshProfile.Stats.Mana = 100
-	freshProfile.Stats.Attack = 1
-	freshProfile.Stats.MagicAttack = 1
-	freshProfile.Stats.Defense = 1
-	freshProfile.Stats.MagicDefense = 1
-	freshProfile.Stats.Armor = 0
-	freshProfile.Stats.Evasion = 0
-	freshProfile.Stats.Accuracy = 1
-	freshProfile.Stats.Agility = 1
-	freshProfile.Stats.Willpower = 1
-	freshProfile.Stats.FireRes = 0
-	freshProfile.Stats.WaterRes = 0
-	freshProfile.Stats.EarthRes = 0
-	freshProfile.Stats.WindRes = 0
-	freshProfile.Stats.IceRes = 0
-	freshProfile.Stats.EnergyRes = 0
-	freshProfile.Stats.NatureRes = 0
-	freshProfile.Stats.PoisonRes = 0
-	freshProfile.Stats.MetalRes = 0
-	freshProfile.Stats.LightRes = 0
-	freshProfile.Stats.DarkRes = 0
-	
-	insertResult, err := profile.InsertOne(cxt, freshProfile)
+	var freshVital PlayerVital
+	freshVital.ObjectID = primitive.NewObjectID()
+	freshVital.User_id = userID
+	freshVital.PlayerProfile.Name = userID
+	freshVital.PlayerProfile.Level = 1
+	freshVital.PlayerProfile.Age = 0
+	freshVital.PlayerProfile.Title = "Just a newbie"
+	freshVital.PlayerProfile.Current_EXP = 0
+	freshVital.PlayerProfile.Total_EXP = 0
+	freshVital.PlayerProfile.Max_EXP = 100
+	freshVital.PlayerProfile.Race_id = "human"
+	freshVital.PlayerProfile.Race_name = "Human"
+	freshVital.PlayerProfile.Class_id = "stranger"
+	freshVital.PlayerProfile.Class_name = "Stranger"
+	freshVital.Stats.Health = 100
+	freshVital.Stats.Mana = 100
+	freshVital.Stats.Attack = 1
+	freshVital.Stats.MagicAttack = 1
+	freshVital.Stats.Defense = 1
+	freshVital.Stats.MagicDefense = 1
+	freshVital.Stats.Armor = 0
+	freshVital.Stats.Evasion = 0
+	freshVital.Stats.Accuracy = 1
+	freshVital.Stats.Agility = 1
+	freshVital.Stats.Willpower = 1
+	freshVital.Stats.FireRes = 0
+	freshVital.Stats.WaterRes = 0
+	freshVital.Stats.EarthRes = 0
+	freshVital.Stats.WindRes = 0
+	freshVital.Stats.IceRes = 0
+	freshVital.Stats.EnergyRes = 0
+	freshVital.Stats.NatureRes = 0
+	freshVital.Stats.PoisonRes = 0
+	freshVital.Stats.MetalRes = 0
+	freshVital.Stats.LightRes = 0
+	freshVital.Stats.DarkRes = 0
+
+	insertResult, err := profile.InsertOne(cxt, freshVital)
 	if err != nil {
 		fmt.Println(err)
 		return false
 	}
-	fmt.Println("Fresh Profile created for user: ", userID, " insertID: ", insertResult.InsertedID)
+	fmt.Println("Fresh Vital created for user: ", userID, " insertID: ", insertResult.InsertedID)
 	return true
 }
-func getProfile(userID string, mongoClient *mongo.Client) (*PlayerProfile, bool) {
+func getVital(userID string, mongoClient *mongo.Client) (*PlayerVital, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
 		panic(err)
 	}
 	database := mongoClient.Database("player")
-	profile := database.Collection("profile")
+	profile := database.Collection("vital")
 	filterCursor, err := profile.Find(cxt, bson.M{"user_id": userID})
 	if err != nil {
 		fmt.Println(err)
 		panic(err)
 	}
-	var filterResult []PlayerProfile
+	var filterResult []PlayerVital
 	if err = filterCursor.All(cxt, &filterResult); err != nil {
 		log.Fatal(err)
 	}
@@ -640,27 +643,27 @@ func updateProfile_EXP(userID string, streamed_exp float64, mongoClient *mongo.C
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
 		panic(err)
 	}
-	playerProfile, profileFound := getProfile(userID, mongoClient)
-	newTotalExp := playerProfile.Total_EXP + streamed_exp
+	playerVital, profileFound := getVital(userID, mongoClient)
+	newTotalExp := playerVital.PlayerProfile.Total_EXP + streamed_exp
 	if profileFound {
 		database := mongoClient.Database("player")
-		profile := database.Collection("profile")
+		profile := database.Collection("vital")
 		match := bson.M{"user_id": userID}
-		totalEXP := playerProfile.Current_EXP + streamed_exp
-		if totalEXP >= playerProfile.Max_EXP {
+		totalEXP := playerVital.PlayerProfile.Current_EXP + streamed_exp
+		if totalEXP >= playerVital.PlayerProfile.Max_EXP {
 			bufferEXP := 0.0
 			levelUpperLimit := 0
-			levelUpperLimitEXP := playerProfile.Max_EXP
+			levelUpperLimitEXP := playerVital.PlayerProfile.Max_EXP
 			for totalEXP > bufferEXP {
 				levelUpperLimitEXP += float64(levelUpperLimit * 50.0)
-				bufferEXP += playerProfile.Max_EXP + float64(levelUpperLimit*50.0)
+				bufferEXP += playerVital.PlayerProfile.Max_EXP + float64(levelUpperLimit*50.0)
 				levelUpperLimit++
 			}
 			newCurrentEXP := levelUpperLimitEXP - (bufferEXP - totalEXP)
-			newLevel := playerProfile.Level + levelUpperLimit
+			newLevel := playerVital.PlayerProfile.Level + levelUpperLimit
 			newMaxEXP := levelUpperLimitEXP
 			change := bson.D{
-				{"$set", bson.D{{"level", newLevel}, {"current_exp", newCurrentEXP}, {"max_exp", newMaxEXP}, {"total_exp", newTotalExp}}},
+				{"$set", bson.D{{"PlayerProfile.level", newLevel}, {"PlayerProfile.current_exp", newCurrentEXP}, {"PlayerProfile.max_exp", newMaxEXP}, {"PlayerProfile.total_exp", newTotalExp}}},
 			}
 			_, err := profile.UpdateOne(cxt, match, change)
 			if err != nil {
@@ -668,10 +671,10 @@ func updateProfile_EXP(userID string, streamed_exp float64, mongoClient *mongo.C
 				return "Profile level and EXP update failed!"
 			}
 			return "Profile level and EXP updated successfully!"
-		} else if totalEXP < playerProfile.Max_EXP {
+		} else if totalEXP < playerVital.PlayerProfile.Max_EXP {
 			newCurrentEXP := totalEXP
 			change := bson.D{
-				{"$set", bson.D{{"current_exp", newCurrentEXP}}},
+				{"$set", bson.D{{"PlayerProfile.current_exp", newCurrentEXP}}},
 			}
 			_, err := profile.UpdateOne(cxt, match, change)
 			if err != nil {
@@ -681,7 +684,7 @@ func updateProfile_EXP(userID string, streamed_exp float64, mongoClient *mongo.C
 			return "Profile EXP updated successfully!"
 		}
 	}
-	return "profile not found"
+	return "vital entry not found"
 }
 func createSpellIndex(userID string, mongoClient *mongo.Client) bool {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)

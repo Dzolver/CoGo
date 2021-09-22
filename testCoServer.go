@@ -273,6 +273,16 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			clientResponse += "?" + strconv.FormatBool(success)
 			writeResponse(clientResponse, clientConnection)
 		}
+		if packetCode == "LR#" {
+			clientResponse = packetCode
+			fmt.Println("Read loadout packet received!")
+			userID := processTier1Packet(packetMessage)
+			loadout, _ := getLoadout(userID, mongoClient)
+			loadoutJSON, _ := json.Marshal(loadout)
+			loadoutData := "?" + string(loadoutJSON)
+			chainWriteResponse(packetCode, loadoutData, byteLimiter, clientConnection, "LOADOUT")
+			writeResponse(clientResponse, clientConnection)
+		}
 		if packetCode == "LA#" {
 			clientResponse = packetCode
 			fmt.Println("Add to loadout")
@@ -859,6 +869,28 @@ func createLoadout(userID string, mongoClient *mongo.Client) bool {
 	}
 	fmt.Println("Fresh Loadout created for user: ", userID, " insertID: ", insertResult.InsertedID)
 	return true
+}
+func getLoadout(userID string, mongoClient *mongo.Client) (*PlayerLoadout, bool) {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("player")
+	profile := database.Collection("loadout")
+	filterCursor, err := profile.Find(cxt, bson.M{"user_id": userID})
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+	var filterResult []PlayerLoadout
+	if err = filterCursor.All(cxt, &filterResult); err != nil {
+		log.Fatal(err)
+	}
+	if len(filterResult) == 1 {
+		return &filterResult[0], true
+	}
+	return nil, true
 }
 func getItem(itemID string, mongoClient *mongo.Client) (*Item, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)

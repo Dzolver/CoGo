@@ -146,10 +146,10 @@ type PlayerProfile struct {
 	Class_name  string  `json:"class_name" default:"" bson:"class_name, omitempty"`
 }
 type PlayerVital struct {
-	ObjectID      primitive.ObjectID `json:"objectID" default:"" bson:"_id,omitempty`
-	User_id       string             `json:"user_id" default:"" bson:"user_id, omitempty"`
-	PlayerProfile PlayerProfile      `json:"profile" default:"" bson:"profile,omitempty`
-	Stats         Stats              `json:"stats" default:"" bson:"stats,omitempty`
+	ObjectID      primitive.ObjectID `json:"objectID" bson:"_id,omitempty"`
+	User_id       string             `json:"user_id" default:"" bson:"user_id,omitempty"`
+	PlayerProfile PlayerProfile      `json:"profile" default:"" bson:"profile, omitempty"`
+	Stats         Stats              `json:"stats" default:"" bson:"stats, omitempty"`
 }
 
 var count = 0
@@ -281,13 +281,21 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			loadoutJSON, _ := json.Marshal(loadout)
 			loadoutData := "?" + string(loadoutJSON)
 			chainWriteResponse(packetCode, loadoutData, byteLimiter, clientConnection, "LOADOUT")
+		}
+		if packetCode == "LE#" {
+			clientResponse = packetCode
+			fmt.Println("Equip to loadout")
+			userID, itemID := processTier2Packet(packetMessage)
+			equipFeedback := equipItem(userID, itemID, mongoClient)
+			clientResponse += equipFeedback
 			writeResponse(clientResponse, clientConnection)
 		}
-		if packetCode == "LA#" {
+		if packetCode == "LUE#" {
 			clientResponse = packetCode
-			fmt.Println("Add to loadout")
+			fmt.Println("Unequip from loadout")
 			userID, itemID := processTier2Packet(packetMessage)
-			clientResponse += equipItem(userID, itemID, mongoClient)
+			unequipFeedback := unequipItem(userID, itemID, mongoClient)
+			clientResponse += unequipFeedback
 			writeResponse(clientResponse, clientConnection)
 		}
 		if packetCode == "SC#" {
@@ -313,7 +321,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			clientResponse += "?" + addSpell(userID, spellID, mongoClient)
 			writeResponse(clientResponse, clientConnection)
 		}
-		if packetCode == "LV#" {
+		if packetCode == "VR#" {
 			clientResponse = packetCode
 			fmt.Println("Load vital packet received!")
 			userID := processTier1Packet(packetMessage)
@@ -322,7 +330,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			vitalData := "?" + string(vitalJSON)
 			chainWriteResponse(packetCode, vitalData, byteLimiter, clientConnection, "PROFILE")
 		}
-		if packetCode == "UL#" {
+		if packetCode == "LU#" {
 			clientResponse = packetCode
 			fmt.Println("Update EXP packet received!")
 			userID, streamedEXPString := processTier2Packet(packetMessage)
@@ -935,14 +943,57 @@ func equipItem(userID string, itemID string, mongoClient *mongo.Client) string {
 		fmt.Println(updateResponse)
 		if err != nil {
 			fmt.Println(err)
-			return "Loadout update failed!"
+			return "EQUIP$0"
 		}
-		return "Loadout updated successfully!"
+		updateVital(userID, retrievedItem, "add", mongoClient)
+		return "EQUIP$1"
 	}
-	return "equipItem"
+	return "EQUIP$0"
 }
 func unequipItem(userID string, itemID string, mongoClient *mongo.Client) string {
-	return "unequipItem"
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("player")
+	loadout := database.Collection("loadout")
+	retrievedItem, itemFound := getItem(itemID, mongoClient)
+	if itemFound {
+		entryArea := retrievedItem.Item_type
+		match := bson.M{"user_id": userID}
+		change := bson.M{"$set": bson.M{entryArea: Item{}}}
+		updateResponse, err := loadout.UpdateOne(cxt, match, change)
+		fmt.Println(updateResponse)
+		if err != nil {
+			fmt.Println(err)
+			return "UNEQUIP$0"
+		}
+		updateVital(userID, retrievedItem, "remove", mongoClient)
+		return "UNEQUIP$1"
+	}
+	return "UNEQUIP$0"
+}
+func updateVital(userID string, item *Item, operation string, mongoClient *mongo.Client) *PlayerVital {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("player")
+	vital := database.Collection("vital")
+	retrievedVital, _ := getVital(userID, mongoClient)
+	originalStats := retrievedVital.Stats
+	updatedStats := updateStatsByItem(&originalStats, item, operation)
+	retrievedVital.Stats = *updatedStats
+	match := bson.M{"user_id": userID}
+	change := bson.M{"$set": bson.D{{"profile", retrievedVital.PlayerProfile}, {"stats", retrievedVital.Stats}}}
+	updateResponse, err := vital.UpdateOne(cxt, match, change)
+	fmt.Println(updateResponse)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return retrievedVital
 }
 func addInventoryItem(userID string, itemID string, mongoClient *mongo.Client) string {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -966,6 +1017,38 @@ func addInventoryItem(userID string, itemID string, mongoClient *mongo.Client) s
 		return "Item added successfully!"
 	}
 	return "Item does not exist!"
+}
+func updateStatsByItem(originalStats *Stats, item *Item, operation string) *Stats {
+	op := 0.0
+	if operation == "add" {
+		op = 1.0
+	} else if operation == "remove" {
+		op = -1.0
+	}
+	originalStats.Health += (op * item.Stats.Health)
+	originalStats.Mana += (op * item.Stats.Mana)
+	originalStats.Attack += (op * item.Stats.Attack)
+	originalStats.MagicAttack += (op * item.Stats.MagicAttack)
+	originalStats.Defense += (op * item.Stats.Defense)
+	originalStats.MagicDefense += (op * item.Stats.MagicDefense)
+	originalStats.Armor += (op * item.Stats.Armor)
+	originalStats.Evasion += (op * item.Stats.Evasion)
+	originalStats.Accuracy += (op * item.Stats.Accuracy)
+	originalStats.Agility += (op * item.Stats.Agility)
+	originalStats.Willpower += (op * item.Stats.Willpower)
+	originalStats.FireRes += (op * item.Stats.FireRes)
+	originalStats.WaterRes += (op * item.Stats.WaterRes)
+	originalStats.EarthRes += (op * item.Stats.EarthRes)
+	originalStats.WindRes += (op * item.Stats.WindRes)
+	originalStats.IceRes += (op * item.Stats.IceRes)
+	originalStats.EnergyRes += (op * item.Stats.EnergyRes)
+	originalStats.NatureRes += (op * item.Stats.NatureRes)
+	originalStats.PoisonRes += (op * item.Stats.PoisonRes)
+	originalStats.MetalRes += (op * item.Stats.MetalRes)
+	originalStats.LightRes += (op * item.Stats.LightRes)
+	originalStats.DarkRes += (op * item.Stats.DarkRes)
+
+	return originalStats
 }
 func IsNewUser(userID string) bool {
 	var isNewUser bool
@@ -997,6 +1080,7 @@ func getPortFromIndex(index int) string {
 func getIndexFromPort(port string) string {
 	return strconv.Itoa(portNumbers[port])
 }
+
 func main() {
 	createPorts()
 	arguments := os.Args

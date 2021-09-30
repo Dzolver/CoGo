@@ -51,37 +51,37 @@ type Purse struct {
 }
 type Item struct {
 	ObjectID    primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
-	Item_id     string             `json:"item_id" bson:"item_id, omitempty"`
-	Item_type   string             `json:"item_type" bson:"item_type, omitempty"`
+	Item_id     string             `json:"item_id" default:"" bson:"item_id, omitempty"`
+	Item_type   string             `json:"item_type" default:"" bson:"item_type, omitempty"`
 	Entity      string             `json:"entity" bson:"entity, omitempty"`
-	Name        string             `json:"name" bson:"name, omitempty"`
-	Num         int32              `json:"num" bson:"num, omitempty"`
-	Description string             `json:"description" bson:"description, omitempty"`
+	Name        string             `json:"name" default:"" bson:"name, omitempty"`
+	Num         int32              `json:"num" default:"" bson:"num, omitempty"`
+	Description string             `json:"description" default:"" bson:"description, omitempty"`
 	Stats       Stats              `json:"stats" bson:"stats, omitempty"`
 }
 type Stats struct {
-	Health       float64 `json:"health" bson:"health"`
-	Mana         float64 `json:"mana" bson:"mana"`
-	Attack       float64 `json:"attack" bson:"attack"`
-	MagicAttack  float64 `json:"magicAttack" bson:"magicAttack"`
-	Defense      float64 `json:"defense" bson:"defense"`
-	MagicDefense float64 `json:"magicDefense" bson:"magicDefense"`
-	Armor        float64 `json:"armor" bson:"armor"`
-	Evasion      float64 `json:"evasion" bson:"evasion"`
-	Accuracy     float64 `json:"accuracy" bson:"accuracy"`
-	Agility      float64 `json:"agility" bson:"agility"`
-	Willpower    float64 `json:"willpower" bson:"willpower"`
-	FireRes      float64 `json:"fireRes" bson:"fireRes"`
-	WaterRes     float64 `json:"waterRes" bson:"waterRes"`
-	EarthRes     float64 `json:"earthRes" bson:"earthRes"`
-	WindRes      float64 `json:"windRes" bson:"windRes"`
-	IceRes       float64 `json:"iceRes" bson:"iceRes"`
-	EnergyRes    float64 `json:"energyRes" bson:"energyRes"`
-	NatureRes    float64 `json:"natureRes" bson:"natureRes"`
-	PoisonRes    float64 `json:"poisonRes" bson:"poisonRes"`
-	MetalRes     float64 `json:"metalRes" bson:"metalRes"`
-	LightRes     float64 `json:"lightRes" bson:"lightRes"`
-	DarkRes      float64 `json:"darkRes" bson:"darkRes"`
+	Health       float64 `json:"health" default:"0" bson:"health"`
+	Mana         float64 `json:"mana" default:"0" bson:"mana"`
+	Attack       float64 `json:"attack" default:"0" bson:"attack"`
+	MagicAttack  float64 `json:"magicAttack" default:"0" bson:"magicAttack"`
+	Defense      float64 `json:"defense" default:"0" bson:"defense"`
+	MagicDefense float64 `json:"magicDefense" default:"0" bson:"magicDefense"`
+	Armor        float64 `json:"armor" default:"0" bson:"armor"`
+	Evasion      float64 `json:"evasion" default:"0" bson:"evasion"`
+	Accuracy     float64 `json:"accuracy" default:"0" bson:"accuracy"`
+	Agility      float64 `json:"agility" default:"0" bson:"agility"`
+	Willpower    float64 `json:"willpower" default:"0" bson:"willpower"`
+	FireRes      float64 `json:"fireRes" default:"0" bson:"fireRes"`
+	WaterRes     float64 `json:"waterRes" default:"0" bson:"waterRes"`
+	EarthRes     float64 `json:"earthRes" default:"0" bson:"earthRes"`
+	WindRes      float64 `json:"windRes" default:"0" bson:"windRes"`
+	IceRes       float64 `json:"iceRes" default:"0" bson:"iceRes"`
+	EnergyRes    float64 `json:"energyRes" default:"0" bson:"energyRes"`
+	NatureRes    float64 `json:"natureRes" default:"0" bson:"natureRes"`
+	PoisonRes    float64 `json:"poisonRes" default:"0" bson:"poisonRes"`
+	MetalRes     float64 `json:"metalRes" default:"0" bson:"metalRes"`
+	LightRes     float64 `json:"lightRes" default:"0" bson:"lightRes"`
+	DarkRes      float64 `json:"darkRes" default:"0" bson:"darkRes"`
 }
 type ItemRange struct {
 	Collection []Item `json:"collection" bson:"collection"`
@@ -150,6 +150,7 @@ type PlayerVital struct {
 	User_id       string             `json:"user_id" default:"" bson:"user_id,omitempty"`
 	PlayerProfile PlayerProfile      `json:"profile" default:"" bson:"profile, omitempty"`
 	Stats         Stats              `json:"stats" default:"" bson:"stats, omitempty"`
+	BaseStats     Stats              `json:"base_stats" default:"" bson:"base_stats, omitempty"`
 }
 
 var count = 0
@@ -608,22 +609,10 @@ func createVital(userID string, mongoClient *mongo.Client) bool {
 	freshVital.Stats.MagicAttack = 1
 	freshVital.Stats.Defense = 1
 	freshVital.Stats.MagicDefense = 1
-	freshVital.Stats.Armor = 0
-	freshVital.Stats.Evasion = 0
 	freshVital.Stats.Accuracy = 1
 	freshVital.Stats.Agility = 1
 	freshVital.Stats.Willpower = 1
-	freshVital.Stats.FireRes = 0
-	freshVital.Stats.WaterRes = 0
-	freshVital.Stats.EarthRes = 0
-	freshVital.Stats.WindRes = 0
-	freshVital.Stats.IceRes = 0
-	freshVital.Stats.EnergyRes = 0
-	freshVital.Stats.NatureRes = 0
-	freshVital.Stats.PoisonRes = 0
-	freshVital.Stats.MetalRes = 0
-	freshVital.Stats.LightRes = 0
-	freshVital.Stats.DarkRes = 0
+	freshVital.BaseStats = freshVital.Stats
 
 	insertResult, err := profile.InsertOne(cxt, freshVital)
 	if err != nil {

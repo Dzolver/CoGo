@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -22,10 +23,13 @@ import (
 )
 
 type User struct {
-	ObjectID primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
-	User_id  string             `json:"user_id" default:"" bson:"user_id, omitempty"`
-	Password string             `json:"password" default:"" bson:"password, omitempty"`
-	Logins   int                `json:"logins" default:"" bson:"logins, omitempty"`
+	ObjectID       primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
+	Account_id     uuid.UUID          `json:"uuid" bson:"uuid,omitempty"`
+	Account_id_str string             `json:"uuid_str" bson:"uuid_str,omitempty"`
+	User_id        string             `json:"user_id" default:"" bson:"user_id, omitempty"`
+	Password       string             `json:"password" default:"" bson:"password, omitempty"`
+	Active         int                `json:"active" default:"" bson:"active,omitempty"`
+	Logins         int                `json:"logins" default:"" bson:"logins, omitempty"`
 }
 type PlayerInventory struct {
 	ObjectID  primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
@@ -152,6 +156,17 @@ type PlayerVital struct {
 	Stats         Stats              `json:"stats" default:"" bson:"stats, omitempty"`
 	BaseStats     Stats              `json:"base_stats" default:"" bson:"base_stats, omitempty"`
 }
+type Client struct {
+	ConnectTime time.Time
+	TCPConnect  net.Conn
+	UDPAddress  *net.UDPAddr
+	Position_x  float64
+	Position_y  float64
+	Position_z  float64
+}
+type Map struct {
+	ConnectedClients map[uuid.UUID]Client
+}
 
 var count = 0
 var processLimitChan = make(chan int, 1000)
@@ -160,6 +175,7 @@ var connectedUsers = make(map[string]bool)
 var portNumbers = make(map[string]int)
 var portNumbersReversed = make(map[string]string)
 var portIndex = 1
+var mapInstance Map
 
 func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoClient *mongo.Client) {
 	fmt.Print(".")
@@ -202,6 +218,10 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			registerResponse, valid := handleRegistration(username, password, mongoClient)
 			if valid {
 				//Register success
+				createInventory(username, mongoClient)
+				createLoadout(username, mongoClient)
+				createSpellIndex(username, mongoClient)
+				createVital(username, mongoClient)
 				clientResponse = "RS#"
 			} else if !valid {
 				//Register fail
@@ -364,6 +384,19 @@ func processTier2Packet(packetMessage string) (string, string) {
 	item2 := strings.Split(packetMessage, "?")[1]
 	return item1, item2
 }
+func processTier3Packet(packetMessage string) (string, string, string) {
+	item1 := strings.Split(packetMessage, "?")[0]
+	item2 := strings.Split(packetMessage, "?")[1]
+	item3 := strings.Split(packetMessage, "?")[2]
+	return item1, item2, item3
+}
+func processTier4Packet(packetMessage string) (string, string, string, string) {
+	item1 := strings.Split(packetMessage, "?")[0]
+	item2 := strings.Split(packetMessage, "?")[1]
+	item3 := strings.Split(packetMessage, "?")[2]
+	item4 := strings.Split(packetMessage, "?")[3]
+	return item1, item2, item3, item4
+}
 func writeResponse(clientResponse string, clientConnection net.Conn) {
 	clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
 }
@@ -420,6 +453,40 @@ func tcpListener(PORT string, cxt context.Context, mongoClient *mongo.Client) {
 		count++
 	}
 }
+func handleNewUDPConnection(accountID string, clientAddress *net.UDPAddr) {
+	fmt.Println("Handling new UDP Connection!")
+	target_uuid, _ := uuid.Parse(accountID)
+	if _, existing := mapInstance.ConnectedClients[target_uuid]; !existing {
+		//add new client connection to client map instance
+		var freshClient Client
+		freshClient.ConnectTime = time.Now()
+		freshClient.UDPAddress = clientAddress
+		mapInstance.ConnectedClients[target_uuid] = freshClient
+		for key, element := range mapInstance.ConnectedClients {
+			fmt.Println("uuid:", key, "=>", "client address:", element.UDPAddress)
+		}
+	}
+}
+func handleUDPConnection(netData string, clientAddress *net.UDPAddr) {
+	packetCode, packetMessage := packetDissect(netData)
+	//clientResponse := "DEFAULT"
+	if packetCode == "UDPC#" {
+		//clientResponse = packetCode
+		fmt.Println("Start UDP stream packet received!")
+		accountID := processTier1Packet(packetMessage)
+		handleNewUDPConnection(accountID, clientAddress)
+	}
+	if packetCode == "M1#" {
+		accountID, x, y, z := processTier4Packet(packetMessage)
+		target_uuid, _ := uuid.Parse(accountID)
+		if player, existing := mapInstance.ConnectedClients[target_uuid]; existing {
+			player.Position_x, _ = strconv.ParseFloat(x, 64)
+			player.Position_y, _ = strconv.ParseFloat(y, 64)
+			player.Position_z, _ = strconv.ParseFloat(z, 64)
+			mapInstance.ConnectedClients[target_uuid] = player
+		}
+	}
+}
 func udpListener(PORT string) {
 	buffer := make([]byte, 1024)
 	serverAddress, err := net.ResolveUDPAddr("udp4", PORT)
@@ -439,7 +506,9 @@ func udpListener(PORT string) {
 			fmt.Println(err)
 			return
 		}
-		fmt.Println("Received message from client: " + string(buffer[0:n-1]))
+		incomingPacket := string(buffer[0:n])
+		//fmt.Println(n, " UDP client address : ", clientAddress)
+		handleUDPConnection(incomingPacket, clientAddress)
 		if strings.TrimSpace(string(buffer[0:n])) == "STOP" {
 			fmt.Println("UDP client has exited!")
 			count--
@@ -457,18 +526,21 @@ func udpListener(PORT string) {
 	}
 }
 func handleLogin(username string, password string, mongoClient *mongo.Client) (string, bool) {
-	if !lookForUser(username, mongoClient) {
-		if validateUser(username, password, mongoClient) {
+	player, playerFound := getUser(username, mongoClient)
+	if playerFound {
+		if validateUser(player, mongoClient) {
 			fmt.Println("Login successful!")
-			return "Login successful;" + username + ";" + strconv.Itoa(getLoginInfo(username, mongoClient)), true
+			response := fmt.Sprintf("Login successful;%v;%v;%v", player.Account_id, player.User_id, player.Logins)
+			return response, true
 		} else {
 			fmt.Println("Login failed!")
 			return "Login Failed;" + username + ";0", false
 		}
 	} else {
-		if validateUser(username, password, mongoClient) {
+		if validateUser(player, mongoClient) {
 			fmt.Println("Login successful!")
-			return "Login Successful;" + username + ";" + strconv.Itoa(getLoginInfo(username, mongoClient)), true
+			response := fmt.Sprintf("Login successful;%v;%v;%v", player.Account_id, player.User_id, player.Logins)
+			return response, true
 		} else {
 			fmt.Println("Login failed!")
 			return "Login failed;" + username + ";0", false
@@ -489,11 +561,14 @@ func createUser(username string, password string, mongoClient *mongo.Client) {
 	defer cancel()
 	database := mongoClient.Database("player")
 	users := database.Collection("users")
-	createResult, err := users.InsertOne(cxt, bson.D{
-		{"user_id", username},
-		{"password", password},
-		{"logins", 0},
-	})
+	var freshUser User
+	freshUser.ObjectID = primitive.NewObjectID()
+	freshUser.Account_id = uuid.New()
+	freshUser.User_id = username
+	freshUser.Password = password
+	freshUser.Active = 0
+	freshUser.Logins = 0
+	createResult, err := users.InsertOne(cxt, freshUser)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -521,7 +596,7 @@ func lookForUser(username string, mongoClient *mongo.Client) bool {
 	}
 	return true
 }
-func validateUser(username string, password string, mongoClient *mongo.Client) bool {
+func validateUser(player *User, mongoClient *mongo.Client) bool {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -529,36 +604,21 @@ func validateUser(username string, password string, mongoClient *mongo.Client) b
 	}
 	database := mongoClient.Database("player")
 	users := database.Collection("users")
-	filterCursor, err := users.Find(cxt, bson.M{"user_id": username, "password": password})
+	_, err := users.UpdateOne(
+		cxt,
+		bson.M{"uuid": player.Account_id},
+		bson.D{
+			{"$set", bson.D{{"active", 1}}},
+			{"$inc", bson.D{{"logins", 1}}},
+		}, options.Update().SetUpsert(true))
 	if err != nil {
 		fmt.Println(err)
+		fmt.Println("Error with incrementing user login amount!")
 		return false
-	}
-	var filterResult []bson.M
-	if err = filterCursor.All(cxt, &filterResult); err != nil {
-		log.Fatal(err)
-	}
-	if len(filterResult) == 0 {
-		//no users found
-		return false
-	} else if len(filterResult) == 1 {
-		_, err := users.UpdateOne(
-			cxt,
-			bson.M{"user_id": username},
-			bson.D{
-				{"$inc", bson.D{{"logins", 1}}},
-			}, options.Update().SetUpsert(true))
-		if err != nil {
-			fmt.Println(err)
-			fmt.Println("Error with incrementing user login amount!")
-			return false
-		}
-		return true
-
 	}
 	return true
 }
-func getLoginInfo(userID string, mongoClient *mongo.Client) int {
+func getUser(userID string, mongoClient *mongo.Client) (*User, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -576,9 +636,9 @@ func getLoginInfo(userID string, mongoClient *mongo.Client) int {
 		log.Fatal(err)
 	}
 	if len(filterResult) == 1 {
-		return filterResult[0].Logins
+		return &filterResult[0], true
 	}
-	return 0
+	return nil, false
 }
 func createVital(userID string, mongoClient *mongo.Client) bool {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1071,7 +1131,7 @@ func getIndexFromPort(port string) string {
 }
 
 func main() {
-	createPorts()
+	//createPorts()
 	arguments := os.Args
 	if len(arguments) == 1 {
 		fmt.Println("Please provide port")
@@ -1079,7 +1139,8 @@ func main() {
 	}
 	//mongoDB specs
 	uri := "mongodb+srv://admin:london1234@cluster0.8acnf.mongodb.net/myFirstDatabase?retryWrites=true&w=majority"
-
+	mapInstance = Map{}
+	mapInstance.ConnectedClients = make(map[uuid.UUID]Client)
 	//initialize mongoDB client
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -1100,6 +1161,8 @@ func main() {
 	// add to sync.WaitGroup
 	wg.Add(1)
 	go tcpListener(PORT, cxt, mongoClient)
+	wg.Add(2)
+	go udpListener(":26950")
 	wg.Wait()
 
 }

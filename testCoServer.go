@@ -23,13 +23,13 @@ import (
 )
 
 type User struct {
-	ObjectID       primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
-	Account_id     uuid.UUID          `json:"uuid" bson:"uuid,omitempty"`
-	Account_id_str string             `json:"uuid_str" bson:"uuid_str,omitempty"`
-	User_id        string             `json:"user_id" default:"" bson:"user_id, omitempty"`
-	Password       string             `json:"password" default:"" bson:"password, omitempty"`
-	Active         int                `json:"active" default:"" bson:"active,omitempty"`
-	Logins         int                `json:"logins" default:"" bson:"logins, omitempty"`
+	ObjectID     primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
+	Account_id   uuid.UUID          `json:"uuid" bson:"uuid,omitempty"`
+	User_id      string             `json:"user_id" default:"" bson:"user_id, omitempty"`
+	Password     string             `json:"password" default:"" bson:"password, omitempty"`
+	Active       int                `json:"active" default:"" bson:"active,omitempty"`
+	Logins       int                `json:"logins" default:"" bson:"logins, omitempty"`
+	LastPosition Position           `json:"last_position" bson:"last_position,omitempty"`
 }
 type PlayerInventory struct {
 	ObjectID  primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
@@ -157,12 +157,17 @@ type PlayerVital struct {
 	BaseStats     Stats              `json:"base_stats" default:"" bson:"base_stats, omitempty"`
 }
 type Client struct {
-	ConnectTime time.Time
-	TCPConnect  net.Conn
-	UDPAddress  *net.UDPAddr
-	Position_x  float64
-	Position_y  float64
-	Position_z  float64
+	ObjectID    primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
+	Account_id  uuid.UUID          `json:"uuid" bson:"uuid, omitempty"`
+	ConnectTime time.Time          `json:"connect_time" bson:"connect_time, omitempty"`
+	TCPConnect  net.Conn           `json:"tcp_addr" bson:"tcp_addr, omitempty"`
+	UDPAddress  *net.UDPAddr       `json:"udp_addr" bson:"udp_addr, omitempty"`
+	Position    Position           `json:"position" bson:"position, omitempty"`
+}
+type Position struct {
+	Position_x float64 `json:"pos_x" default:"0" bson:"pos_x, omitempty"`
+	Position_y float64 `json:"pos_y" default:"1" bson:"pos_y, omitempty"`
+	Position_z float64 `json:"pos_z" default:"0" bson:"pos_z, omitempty"`
 }
 type Map struct {
 	ConnectedClients map[uuid.UUID]Client
@@ -170,6 +175,7 @@ type Map struct {
 
 var count = 0
 var processLimitChan = make(chan int, 1000)
+var broadcastSend = make(chan Map, 10)
 var wg sync.WaitGroup
 var connectedUsers = make(map[string]bool)
 var portNumbers = make(map[string]int)
@@ -189,6 +195,72 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		}
 		packetCode, packetMessage := packetDissect(netData)
 		fmt.Println(netData)
+		if packetCode == "CE#" {
+			clientResponse = packetCode
+			fmt.Println("Create Everything packet received!")
+			userID := strings.Split(packetMessage, "?")[0]
+			createInventory(userID, mongoClient)
+			createLoadout(userID, mongoClient)
+			createSpellIndex(userID, mongoClient)
+			createVital(userID, mongoClient)
+			clientResponse += "?Everything created successfully"
+			writeResponse(clientResponse, clientConnection)
+		}
+		if packetCode == "HB#" {
+			fmt.Println("Heartbeat packet received!")
+			accountID, x, y, z := processTier4Packet(packetMessage)
+			target_uuid, _ := uuid.Parse(accountID)
+			var lastPosition Position
+			lastPosition.Position_x, _ = strconv.ParseFloat(x, 64)
+			lastPosition.Position_y, _ = strconv.ParseFloat(y, 64)
+			lastPosition.Position_z, _ = strconv.ParseFloat(z, 64)
+			updateUserLastPosition(target_uuid, lastPosition, mongoClient)
+		}
+		//Inventory add
+		if packetCode == "IA#" {
+			clientResponse = packetCode
+			fmt.Println("Add Inventory packet received!")
+			fmt.Println("Packet message : ", packetMessage)
+			userID, itemID := processTier2Packet(packetMessage)
+			clientResponse += addInventoryItem(userID, itemID, mongoClient)
+			writeResponse(clientResponse, clientConnection)
+		}
+		//Inventory create
+		if packetCode == "IC#" {
+			clientResponse = packetCode
+			fmt.Println("Create Inventory packet received!")
+			userID := strings.Split(packetMessage, "?")[0]
+			success := createInventory(userID, mongoClient)
+			if success {
+				//Inventory success
+				clientResponse = "IS#"
+				clientResponse += "?Message from server : Inventory created succcesfully"
+			}
+			writeResponse(clientResponse, clientConnection)
+		}
+		//Inventory delete
+		if packetCode == "ID#" {
+			clientResponse = packetCode
+			fmt.Println("Delete Inventory packet received!")
+		}
+		if packetCode == "IR#" {
+			fmt.Println("Read Inventory packet received!")
+			userID := strings.Split(packetMessage, "?")[0]
+			inventory, _ := getInventory(userID, mongoClient)
+			inventoryJSON, _ := json.Marshal(inventory)
+			inventoryData := "?" + string(inventoryJSON)
+			chainWriteResponse(packetCode, inventoryData, byteLimiter, clientConnection, "INVENTORY")
+		}
+		//Inventory update
+		if packetCode == "IU#" {
+			clientResponse = packetCode
+			fmt.Println("Update Inventory packet received!")
+			fmt.Println("Packet message : ", packetMessage)
+			username, itemID := processTier2Packet(packetMessage)
+
+			clientResponse += "?" + addInventoryItem(username, itemID, mongoClient)
+			writeResponse(clientResponse, clientConnection)
+		}
 		//Login
 		if packetCode == "L0#" {
 			clientResponse = packetCode
@@ -203,11 +275,52 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 				clientResponse = "LF#"
 			}
 			//get a good port number for the udplistener and for the client to connect to
-			wg.Add(1)
-			designatedPortNumber := getPortFromIndex(portIndex)
-			go udpListener(designatedPortNumber)
-			clientResponse += "?" + loginResponse + "?" + designatedPortNumber
-			portIndex--
+			//wg.Add(1)
+			//designatedPortNumber := getPortFromIndex(portIndex)
+			//go udpListener(designatedPortNumber, cxt, mongoClient)
+			clientResponse += "?" + loginResponse
+			//portIndex--
+			writeResponse(clientResponse, clientConnection)
+		}
+		if packetCode == "LC#" {
+			clientResponse = packetCode
+			fmt.Println("Create loadout packet received!")
+			userID := processTier1Packet(packetMessage)
+			success := createLoadout(userID, mongoClient)
+			clientResponse += "?" + strconv.FormatBool(success)
+			writeResponse(clientResponse, clientConnection)
+		}
+		if packetCode == "LE#" {
+			clientResponse = packetCode
+			fmt.Println("Equip to loadout")
+			userID, itemID := processTier2Packet(packetMessage)
+			equipFeedback := equipItem(userID, itemID, mongoClient)
+			clientResponse += equipFeedback
+			writeResponse(clientResponse, clientConnection)
+		}
+		if packetCode == "LR#" {
+			clientResponse = packetCode
+			fmt.Println("Read loadout packet received!")
+			userID := processTier1Packet(packetMessage)
+			loadout, _ := getLoadout(userID, mongoClient)
+			loadoutJSON, _ := json.Marshal(loadout)
+			loadoutData := "?" + string(loadoutJSON)
+			chainWriteResponse(packetCode, loadoutData, byteLimiter, clientConnection, "LOADOUT")
+		}
+		if packetCode == "LU#" {
+			clientResponse = packetCode
+			fmt.Println("Update EXP packet received!")
+			userID, streamedEXPString := processTier2Packet(packetMessage)
+			streamedEXP, _ := strconv.ParseFloat(streamedEXPString, 64)
+			clientResponse += "?" + updateProfile_EXP(userID, streamedEXP, mongoClient)
+			writeResponse(clientResponse, clientConnection)
+		}
+		if packetCode == "LUE#" {
+			clientResponse = packetCode
+			fmt.Println("Unequip from loadout")
+			userID, itemID := processTier2Packet(packetMessage)
+			unequipFeedback := unequipItem(userID, itemID, mongoClient)
+			clientResponse += unequipFeedback
 			writeResponse(clientResponse, clientConnection)
 		}
 		//Register
@@ -228,95 +341,6 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 				clientResponse = "RF#"
 			}
 			clientResponse += "?" + registerResponse
-			writeResponse(clientResponse, clientConnection)
-		}
-		//Inventory add
-		if packetCode == "IA#" {
-			clientResponse = packetCode
-			fmt.Println("Add Inventory packet received!")
-			fmt.Println("Packet message : ", packetMessage)
-			userID, itemID := processTier2Packet(packetMessage)
-			clientResponse += addInventoryItem(userID, itemID, mongoClient)
-			writeResponse(clientResponse, clientConnection)
-		}
-		//Inventory delete
-		if packetCode == "ID#" {
-			clientResponse = packetCode
-			fmt.Println("Delete Inventory packet received!")
-		}
-		//Inventory update
-		if packetCode == "IU#" {
-			clientResponse = packetCode
-			fmt.Println("Update Inventory packet received!")
-			fmt.Println("Packet message : ", packetMessage)
-			username, itemID := processTier2Packet(packetMessage)
-
-			clientResponse += "?" + addInventoryItem(username, itemID, mongoClient)
-			writeResponse(clientResponse, clientConnection)
-		}
-		//Inventory create
-		if packetCode == "IC#" {
-			clientResponse = packetCode
-			fmt.Println("Create Inventory packet received!")
-			userID := strings.Split(packetMessage, "?")[0]
-			success := createInventory(userID, mongoClient)
-			if success {
-				//Inventory success
-				clientResponse = "IS#"
-				clientResponse += "?Message from server : Inventory created succcesfully"
-			}
-			writeResponse(clientResponse, clientConnection)
-		}
-		if packetCode == "CE#" {
-			clientResponse = packetCode
-			fmt.Println("Create Everything packet received!")
-			userID := strings.Split(packetMessage, "?")[0]
-			createInventory(userID, mongoClient)
-			createLoadout(userID, mongoClient)
-			createSpellIndex(userID, mongoClient)
-			createVital(userID, mongoClient)
-			clientResponse += "?Everything created successfully"
-			writeResponse(clientResponse, clientConnection)
-		}
-		if packetCode == "IR#" {
-			fmt.Println("Read Inventory packet received!")
-			userID := strings.Split(packetMessage, "?")[0]
-			inventory, _ := getInventory(userID, mongoClient)
-			inventoryJSON, _ := json.Marshal(inventory)
-			inventoryData := "?" + string(inventoryJSON)
-			chainWriteResponse(packetCode, inventoryData, byteLimiter, clientConnection, "INVENTORY")
-		}
-		if packetCode == "LC#" {
-			clientResponse = packetCode
-			fmt.Println("Create loadout packet received!")
-			userID := processTier1Packet(packetMessage)
-			success := createLoadout(userID, mongoClient)
-			clientResponse += "?" + strconv.FormatBool(success)
-			writeResponse(clientResponse, clientConnection)
-		}
-		if packetCode == "LR#" {
-			clientResponse = packetCode
-			fmt.Println("Read loadout packet received!")
-			userID := processTier1Packet(packetMessage)
-			loadout, _ := getLoadout(userID, mongoClient)
-			loadoutJSON, _ := json.Marshal(loadout)
-			loadoutData := "?" + string(loadoutJSON)
-			chainWriteResponse(packetCode, loadoutData, byteLimiter, clientConnection, "LOADOUT")
-		}
-		if packetCode == "LE#" {
-			clientResponse = packetCode
-			fmt.Println("Equip to loadout")
-			userID, itemID := processTier2Packet(packetMessage)
-			equipFeedback := equipItem(userID, itemID, mongoClient)
-			clientResponse += equipFeedback
-			writeResponse(clientResponse, clientConnection)
-		}
-		if packetCode == "LUE#" {
-			clientResponse = packetCode
-			fmt.Println("Unequip from loadout")
-			userID, itemID := processTier2Packet(packetMessage)
-			unequipFeedback := unequipItem(userID, itemID, mongoClient)
-			clientResponse += unequipFeedback
 			writeResponse(clientResponse, clientConnection)
 		}
 		if packetCode == "SC#" {
@@ -350,14 +374,6 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			vitalJSON, _ := json.Marshal(vital)
 			vitalData := "?" + string(vitalJSON)
 			chainWriteResponse(packetCode, vitalData, byteLimiter, clientConnection, "PROFILE")
-		}
-		if packetCode == "LU#" {
-			clientResponse = packetCode
-			fmt.Println("Update EXP packet received!")
-			userID, streamedEXPString := processTier2Packet(packetMessage)
-			streamedEXP, _ := strconv.ParseFloat(streamedEXPString, 64)
-			clientResponse += "?" + updateProfile_EXP(userID, streamedEXP, mongoClient)
-			writeResponse(clientResponse, clientConnection)
 		}
 		fmt.Println("Sent message back to client : ", clientResponse)
 		if packetMessage == "STOP" {
@@ -453,8 +469,9 @@ func tcpListener(PORT string, cxt context.Context, mongoClient *mongo.Client) {
 		count++
 	}
 }
-func handleNewUDPConnection(accountID string, clientAddress *net.UDPAddr) {
+func handleNewUDPConnection(accountID string, clientAddress *net.UDPAddr) bool {
 	fmt.Println("Handling new UDP Connection!")
+	connected := false
 	target_uuid, _ := uuid.Parse(accountID)
 	if _, existing := mapInstance.ConnectedClients[target_uuid]; !existing {
 		//add new client connection to client map instance
@@ -465,29 +482,53 @@ func handleNewUDPConnection(accountID string, clientAddress *net.UDPAddr) {
 		for key, element := range mapInstance.ConnectedClients {
 			fmt.Println("uuid:", key, "=>", "client address:", element.UDPAddress)
 		}
+		connected = true
 	}
+	return connected
 }
-func handleUDPConnection(netData string, clientAddress *net.UDPAddr) {
+func handleUDPConnection(netData string, clientAddress *net.UDPAddr, listenerConnection *net.UDPConn, mongoClient *mongo.Client) {
 	packetCode, packetMessage := packetDissect(netData)
-	//clientResponse := "DEFAULT"
+	fmt.Println("UDP Net data:" + netData)
+	fmt.Println("Packetcode : " + packetCode)
+	fmt.Println("Packet msg : " + packetMessage)
 	if packetCode == "UDPC#" {
-		//clientResponse = packetCode
+		clientResponse := packetCode
 		fmt.Println("Start UDP stream packet received!")
 		accountID := processTier1Packet(packetMessage)
-		handleNewUDPConnection(accountID, clientAddress)
+		connected := handleNewUDPConnection(accountID, clientAddress)
+		clientResponse += "?" + strconv.FormatBool(connected)
+		data := []byte(clientResponse)
+		listenerConnection.WriteToUDP(data, clientAddress)
 	}
 	if packetCode == "M1#" {
 		accountID, x, y, z := processTier4Packet(packetMessage)
 		target_uuid, _ := uuid.Parse(accountID)
 		if player, existing := mapInstance.ConnectedClients[target_uuid]; existing {
-			player.Position_x, _ = strconv.ParseFloat(x, 64)
-			player.Position_y, _ = strconv.ParseFloat(y, 64)
-			player.Position_z, _ = strconv.ParseFloat(z, 64)
+			player.Position.Position_x, _ = strconv.ParseFloat(x, 64)
+			player.Position.Position_y, _ = strconv.ParseFloat(y, 64)
+			player.Position.Position_z, _ = strconv.ParseFloat(z, 64)
+			//updateUserLastPosition(target_uuid, player.Position, mongoClient)
 			mapInstance.ConnectedClients[target_uuid] = player
 		}
+		//broadcastSend <- mapInstance
 	}
 }
-func udpListener(PORT string) {
+func broadcast(broadcastSend chan Map) {
+	local, _ := net.ResolveUDPAddr("udp4", ":6666")
+	broadcastAddress, _ := net.ResolveUDPAddr("udp", "255.255.255.255"+":26950")
+	connection, _ := net.DialUDP("udp", local, broadcastAddress)
+	defer connection.Close()
+	movementData := ""
+	for _, client := range mapInstance.ConnectedClients {
+		clientJSON, _ := json.Marshal(client)
+		movementData += "?" + string(clientJSON)
+	}
+	_, err := connection.Write([]byte(movementData))
+	if err != nil {
+		panic(err)
+	}
+}
+func udpListener(PORT string, cxt context.Context, mongoClient *mongo.Client) {
 	buffer := make([]byte, 1024)
 	serverAddress, err := net.ResolveUDPAddr("udp4", PORT)
 	if err != nil {
@@ -508,21 +549,21 @@ func udpListener(PORT string) {
 		}
 		incomingPacket := string(buffer[0:n])
 		//fmt.Println(n, " UDP client address : ", clientAddress)
-		handleUDPConnection(incomingPacket, clientAddress)
-		if strings.TrimSpace(string(buffer[0:n])) == "STOP" {
-			fmt.Println("UDP client has exited!")
-			count--
-			break
-		}
-		data := []byte("UDP server acknowledges!")
-		v, err := listenerConnection.WriteToUDP(data, clientAddress)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		fmt.Print(v)
-		count++
-		processLimitChan <- count
+		handleUDPConnection(incomingPacket, clientAddress, listenerConnection, mongoClient)
+		// if strings.TrimSpace(string(buffer[0:n])) == "STOP" {
+		// 	fmt.Println("UDP client has exited!")
+		// 	count--
+		// 	break
+		// }
+		// data := []byte("UDP server acknowledges!")
+		// v, err := listenerConnection.WriteToUDP(data, clientAddress)
+		// if err != nil {
+		// 	fmt.Println(err)
+		// 	return
+		// }
+		// fmt.Print(v)
+		// count++
+		// processLimitChan <- count
 	}
 }
 func handleLogin(username string, password string, mongoClient *mongo.Client) (string, bool) {
@@ -530,7 +571,8 @@ func handleLogin(username string, password string, mongoClient *mongo.Client) (s
 	if playerFound {
 		if validateUser(player, mongoClient) {
 			fmt.Println("Login successful!")
-			response := fmt.Sprintf("Login successful;%v;%v;%v", player.Account_id, player.User_id, player.Logins)
+			positionJSON, _ := json.Marshal(player.LastPosition)
+			response := fmt.Sprintf("Login successful;%v;%v;%v;%v", player.Account_id, player.User_id, player.Logins, string(positionJSON))
 			return response, true
 		} else {
 			fmt.Println("Login failed!")
@@ -539,7 +581,8 @@ func handleLogin(username string, password string, mongoClient *mongo.Client) (s
 	} else {
 		if validateUser(player, mongoClient) {
 			fmt.Println("Login successful!")
-			response := fmt.Sprintf("Login successful;%v;%v;%v", player.Account_id, player.User_id, player.Logins)
+			positionJSON, _ := json.Marshal(player.LastPosition)
+			response := fmt.Sprintf("Login successful;%v;%v;%v;%v", player.Account_id, player.User_id, player.Logins, string(positionJSON))
 			return response, true
 		} else {
 			fmt.Println("Login failed!")
@@ -568,6 +611,7 @@ func createUser(username string, password string, mongoClient *mongo.Client) {
 	freshUser.Password = password
 	freshUser.Active = 0
 	freshUser.Logins = 0
+	freshUser.LastPosition = Position{}
 	createResult, err := users.InsertOne(cxt, freshUser)
 	if err != nil {
 		log.Fatal(err)
@@ -639,6 +683,26 @@ func getUser(userID string, mongoClient *mongo.Client) (*User, bool) {
 		return &filterResult[0], true
 	}
 	return nil, false
+}
+func updateUserLastPosition(target_uuid uuid.UUID, lastPosition Position, mongoClient *mongo.Client) bool {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("player")
+	user := database.Collection("user")
+	match := bson.M{"uuid": target_uuid}
+	change := bson.M{"$set": bson.D{
+		{"last_position", lastPosition},
+	}}
+	updateResponse, err := user.UpdateOne(cxt, match, change)
+	fmt.Printf("Updated %v Documents!\n", updateResponse.ModifiedCount)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+	return true
 }
 func createVital(userID string, mongoClient *mongo.Client) bool {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1162,7 +1226,9 @@ func main() {
 	wg.Add(1)
 	go tcpListener(PORT, cxt, mongoClient)
 	wg.Add(2)
-	go udpListener(":26950")
+	go udpListener(":26950", cxt, mongoClient)
+	wg.Add(3)
+	go broadcast(broadcastSend)
 	wg.Wait()
 
 }

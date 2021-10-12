@@ -375,7 +375,6 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			vitalData := "?" + string(vitalJSON)
 			chainWriteResponse(packetCode, vitalData, byteLimiter, clientConnection, "PROFILE")
 		}
-		fmt.Println("Sent message back to client : ", clientResponse)
 		if packetMessage == "STOP" {
 			fmt.Println("Client connection has exited")
 			count--
@@ -488,32 +487,34 @@ func handleNewUDPConnection(accountID string, clientAddress *net.UDPAddr) bool {
 }
 func handleUDPConnection(netData string, clientAddress *net.UDPAddr, listenerConnection *net.UDPConn, mongoClient *mongo.Client) {
 	packetCode, packetMessage := packetDissect(netData)
-	fmt.Println("UDP Net data:" + netData)
-	fmt.Println("Packetcode : " + packetCode)
-	fmt.Println("Packet msg : " + packetMessage)
-	if packetCode == "UDPC#" {
-		clientResponse := packetCode
-		fmt.Println("Start UDP stream packet received!")
-		accountID := processTier1Packet(packetMessage)
-		connected := handleNewUDPConnection(accountID, clientAddress)
-		clientResponse += "?" + strconv.FormatBool(connected)
-		data := []byte(clientResponse)
-		listenerConnection.WriteToUDP(data, clientAddress)
-	}
-	if packetCode == "M1#" {
-		accountID, x, y, z := processTier4Packet(packetMessage)
-		target_uuid, _ := uuid.Parse(accountID)
-		if player, existing := mapInstance.ConnectedClients[target_uuid]; existing {
-			player.Position.Position_x, _ = strconv.ParseFloat(x, 64)
-			player.Position.Position_y, _ = strconv.ParseFloat(y, 64)
-			player.Position.Position_z, _ = strconv.ParseFloat(z, 64)
-			//updateUserLastPosition(target_uuid, player.Position, mongoClient)
-			mapInstance.ConnectedClients[target_uuid] = player
+	if packetCode != "" {
+		fmt.Println("UDP Net data:" + netData)
+		fmt.Println("Packetcode : " + packetCode)
+		fmt.Println("Packet msg : " + packetMessage)
+		if packetCode == "UDPC#" {
+			clientResponse := packetCode
+			fmt.Println("Start UDP stream packet received!")
+			accountID := processTier1Packet(packetMessage)
+			connected := handleNewUDPConnection(accountID, clientAddress)
+			clientResponse += "?" + strconv.FormatBool(connected)
+			data := []byte(clientResponse)
+			listenerConnection.WriteToUDP(data, clientAddress)
 		}
-		//broadcastSend <- mapInstance
+		if packetCode == "M1#" {
+			accountID, x, y, z := processTier4Packet(packetMessage)
+			target_uuid, _ := uuid.Parse(accountID)
+			if player, existing := mapInstance.ConnectedClients[target_uuid]; existing {
+				player.Position.Position_x, _ = strconv.ParseFloat(x, 64)
+				player.Position.Position_y, _ = strconv.ParseFloat(y, 64)
+				player.Position.Position_z, _ = strconv.ParseFloat(z, 64)
+				//updateUserLastPosition(target_uuid, player.Position, mongoClient)
+				mapInstance.ConnectedClients[target_uuid] = player
+			}
+			//broadcastSend <- mapInstance
+		}
 	}
 }
-func broadcast(broadcastSend chan Map) {
+func broadcast() {
 	local, _ := net.ResolveUDPAddr("udp4", ":6666")
 	broadcastAddress, _ := net.ResolveUDPAddr("udp", "255.255.255.255"+":26950")
 	connection, _ := net.DialUDP("udp", local, broadcastAddress)
@@ -550,6 +551,9 @@ func udpListener(PORT string, cxt context.Context, mongoClient *mongo.Client) {
 		incomingPacket := string(buffer[0:n])
 		//fmt.Println(n, " UDP client address : ", clientAddress)
 		handleUDPConnection(incomingPacket, clientAddress, listenerConnection, mongoClient)
+		if len(mapInstance.ConnectedClients) > 0 {
+			broadcast()
+		}
 		// if strings.TrimSpace(string(buffer[0:n])) == "STOP" {
 		// 	fmt.Println("UDP client has exited!")
 		// 	count--
@@ -691,7 +695,7 @@ func updateUserLastPosition(target_uuid uuid.UUID, lastPosition Position, mongoC
 		panic(err)
 	}
 	database := mongoClient.Database("player")
-	user := database.Collection("user")
+	user := database.Collection("users")
 	match := bson.M{"uuid": target_uuid}
 	change := bson.M{"$set": bson.D{
 		{"last_position", lastPosition},
@@ -1227,8 +1231,6 @@ func main() {
 	go tcpListener(PORT, cxt, mongoClient)
 	wg.Add(2)
 	go udpListener(":26950", cxt, mongoClient)
-	wg.Add(3)
-	go broadcast(broadcastSend)
 	wg.Wait()
 
 }

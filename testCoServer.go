@@ -567,15 +567,8 @@ func handleLogin(username string, password string, mongoClient *mongo.Client) (s
 			return "Login Failed;" + username + ";0", false
 		}
 	} else {
-		if validateUser(player, mongoClient) {
-			fmt.Println("Login successful!")
-			positionJSON, _ := json.Marshal(player.LastPosition)
-			response := fmt.Sprintf("Login successful;%v;%v;%v;%v", player.Account_id, player.User_id, player.Logins, string(positionJSON))
-			return response, true
-		} else {
-			fmt.Println("Login failed!")
-			return "Login failed;" + username + ";0", false
-		}
+		fmt.Println("Login failed!")
+		return "Login failed;" + username + ";0", false
 	}
 }
 func handleRegistration(username string, password string, mongoClient *mongo.Client) (string, bool, uuid.UUID) {
@@ -671,7 +664,8 @@ func getUser(userID string, mongoClient *mongo.Client) (*User, bool) {
 	if len(filterResult) == 1 {
 		return &filterResult[0], true
 	}
-	return nil, false
+	var dummyUser User
+	return &dummyUser, false
 }
 func updateUserLastPosition(target_uuid uuid.UUID, lastPosition Position, mongoClient *mongo.Client) bool {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)

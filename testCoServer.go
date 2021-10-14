@@ -32,15 +32,15 @@ type User struct {
 	LastPosition Position           `json:"last_position" bson:"last_position,omitempty"`
 }
 type PlayerInventory struct {
-	ObjectID  primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
-	User_id   string             `json:"user_id" default:"" bson:"user_id, omitempty"`
-	Purse     Purse              `json:"purse" bson:"purse, omitempty"`
-	Equipment Equipment          `json:"equipment" bson:"equipment, omitempty"`
-	Items     Items              `json:"items" bson:"items, omitempty"`
+	ObjectID   primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
+	Account_id uuid.UUID          `json:"uuid" bson:"uuid,omitempty"`
+	Purse      Purse              `json:"purse" bson:"purse, omitempty"`
+	Equipment  Equipment          `json:"equipment" bson:"equipment, omitempty"`
+	Items      Items              `json:"items" bson:"items, omitempty"`
 }
 type PlayerLoadout struct {
 	ObjectID    primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
-	User_id     string             `json:"user_id" default:"" bson:"user_id, omitempty"`
+	Account_id  uuid.UUID          `json:"uuid" bson:"uuid,omitempty"`
 	Head        Item               `json:"head" bson:"Head, omitempty"`
 	Body        Item               `json:"body" bson:"Body, omitempty"`
 	Feet        Item               `json:"feet" bson:"Feet, omitempty"`
@@ -104,7 +104,7 @@ type Items struct {
 }
 type PlayerSpellIndex struct {
 	ObjectID    primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
-	User_id     string             `json:"user_id" bson:"user_id, omitempty"`
+	Account_id  uuid.UUID          `json:"uuid" bson:"uuid,omitempty"`
 	Spell_index []Spell            `json:"spell_index" bson:"spell_index, omitempty"`
 }
 type Spell struct {
@@ -151,7 +151,7 @@ type PlayerProfile struct {
 }
 type PlayerVital struct {
 	ObjectID      primitive.ObjectID `json:"objectID" bson:"_id,omitempty"`
-	User_id       string             `json:"user_id" default:"" bson:"user_id,omitempty"`
+	Account_id    uuid.UUID          `json:"uuid" bson:"uuid,omitempty"`
 	PlayerProfile PlayerProfile      `json:"profile" default:"" bson:"profile, omitempty"`
 	Stats         Stats              `json:"stats" default:"" bson:"stats, omitempty"`
 	BaseStats     Stats              `json:"base_stats" default:"" bson:"base_stats, omitempty"`
@@ -195,17 +195,6 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		}
 		packetCode, packetMessage := packetDissect(netData)
 		fmt.Println(netData)
-		if packetCode == "CE#" {
-			clientResponse = packetCode
-			fmt.Println("Create Everything packet received!")
-			userID := strings.Split(packetMessage, "?")[0]
-			createInventory(userID, mongoClient)
-			createLoadout(userID, mongoClient)
-			createSpellIndex(userID, mongoClient)
-			createVital(userID, mongoClient)
-			clientResponse += "?Everything created successfully"
-			writeResponse(clientResponse, clientConnection)
-		}
 		if packetCode == "HB#" {
 			fmt.Println("Heartbeat packet received!")
 			accountID, x, y, z := processTier4Packet(packetMessage)
@@ -221,32 +210,20 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			clientResponse = packetCode
 			fmt.Println("Add Inventory packet received!")
 			fmt.Println("Packet message : ", packetMessage)
-			userID, itemID := processTier2Packet(packetMessage)
-			clientResponse += addInventoryItem(userID, itemID, mongoClient)
+			accountIDSTR, itemID := processTier2Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
+			clientResponse += addInventoryItem(accountID, itemID, mongoClient)
 			writeResponse(clientResponse, clientConnection)
 		}
-		//Inventory create
-		if packetCode == "IC#" {
-			clientResponse = packetCode
-			fmt.Println("Create Inventory packet received!")
-			userID := strings.Split(packetMessage, "?")[0]
-			success := createInventory(userID, mongoClient)
-			if success {
-				//Inventory success
-				clientResponse = "IS#"
-				clientResponse += "?Message from server : Inventory created succcesfully"
-			}
-			writeResponse(clientResponse, clientConnection)
-		}
-		//Inventory delete
 		if packetCode == "ID#" {
 			clientResponse = packetCode
 			fmt.Println("Delete Inventory packet received!")
 		}
 		if packetCode == "IR#" {
 			fmt.Println("Read Inventory packet received!")
-			userID := strings.Split(packetMessage, "?")[0]
-			inventory, _ := getInventory(userID, mongoClient)
+			accountIDSTR := processTier1Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
+			inventory, _ := getInventory(accountID, mongoClient)
 			inventoryJSON, _ := json.Marshal(inventory)
 			inventoryData := "?" + string(inventoryJSON)
 			chainWriteResponse(packetCode, inventoryData, byteLimiter, clientConnection, "INVENTORY")
@@ -256,9 +233,9 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			clientResponse = packetCode
 			fmt.Println("Update Inventory packet received!")
 			fmt.Println("Packet message : ", packetMessage)
-			username, itemID := processTier2Packet(packetMessage)
-
-			clientResponse += "?" + addInventoryItem(username, itemID, mongoClient)
+			accountIDSTR, itemID := processTier2Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
+			clientResponse += "?" + addInventoryItem(accountID, itemID, mongoClient)
 			writeResponse(clientResponse, clientConnection)
 		}
 		//Login
@@ -282,27 +259,21 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			//portIndex--
 			writeResponse(clientResponse, clientConnection)
 		}
-		if packetCode == "LC#" {
-			clientResponse = packetCode
-			fmt.Println("Create loadout packet received!")
-			userID := processTier1Packet(packetMessage)
-			success := createLoadout(userID, mongoClient)
-			clientResponse += "?" + strconv.FormatBool(success)
-			writeResponse(clientResponse, clientConnection)
-		}
 		if packetCode == "LE#" {
 			clientResponse = packetCode
 			fmt.Println("Equip to loadout")
-			userID, itemID := processTier2Packet(packetMessage)
-			equipFeedback := equipItem(userID, itemID, mongoClient)
+			accountIDSTR, itemID := processTier2Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
+			equipFeedback := equipItem(accountID, itemID, mongoClient)
 			clientResponse += equipFeedback
 			writeResponse(clientResponse, clientConnection)
 		}
 		if packetCode == "LR#" {
 			clientResponse = packetCode
 			fmt.Println("Read loadout packet received!")
-			userID := processTier1Packet(packetMessage)
-			loadout, _ := getLoadout(userID, mongoClient)
+			accountIDSTR := processTier1Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
+			loadout, _ := getLoadout(accountID, mongoClient)
 			loadoutJSON, _ := json.Marshal(loadout)
 			loadoutData := "?" + string(loadoutJSON)
 			chainWriteResponse(packetCode, loadoutData, byteLimiter, clientConnection, "LOADOUT")
@@ -310,16 +281,18 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		if packetCode == "LU#" {
 			clientResponse = packetCode
 			fmt.Println("Update EXP packet received!")
-			userID, streamedEXPString := processTier2Packet(packetMessage)
+			accountIDSTR, streamedEXPString := processTier2Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
 			streamedEXP, _ := strconv.ParseFloat(streamedEXPString, 64)
-			clientResponse += "?" + updateProfile_EXP(userID, streamedEXP, mongoClient)
+			clientResponse += "?" + updateProfile_EXP(accountID, streamedEXP, mongoClient)
 			writeResponse(clientResponse, clientConnection)
 		}
 		if packetCode == "LUE#" {
 			clientResponse = packetCode
 			fmt.Println("Unequip from loadout")
-			userID, itemID := processTier2Packet(packetMessage)
-			unequipFeedback := unequipItem(userID, itemID, mongoClient)
+			accountIDSTR, itemID := processTier2Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
+			unequipFeedback := unequipItem(accountID, itemID, mongoClient)
 			clientResponse += unequipFeedback
 			writeResponse(clientResponse, clientConnection)
 		}
@@ -328,13 +301,13 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			clientResponse = packetCode
 			fmt.Println("Register packet received!")
 			username, password := processTier2Packet(packetMessage)
-			registerResponse, valid := handleRegistration(username, password, mongoClient)
+			registerResponse, valid, accountID := handleRegistration(username, password, mongoClient)
 			if valid {
 				//Register success
-				createInventory(username, mongoClient)
-				createLoadout(username, mongoClient)
-				createSpellIndex(username, mongoClient)
-				createVital(username, mongoClient)
+				createInventory(accountID, mongoClient)
+				createLoadout(accountID, mongoClient)
+				createSpellIndex(accountID, mongoClient)
+				createVital(username, accountID, mongoClient)
 				clientResponse = "RS#"
 			} else if !valid {
 				//Register fail
@@ -343,18 +316,11 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			clientResponse += "?" + registerResponse
 			writeResponse(clientResponse, clientConnection)
 		}
-		if packetCode == "SC#" {
-			clientResponse = packetCode
-			fmt.Println("Spell index creation packet received!")
-			userID := processTier1Packet(packetMessage)
-			success := createSpellIndex(userID, mongoClient)
-			clientResponse += "?" + strconv.FormatBool(success)
-			writeResponse(clientResponse, clientConnection)
-		}
 		if packetCode == "SR#" {
 			fmt.Println("Read Spell Index packet received!")
-			userID := strings.Split(packetMessage, "?")[0]
-			spellIndex, _ := getSpellIndex(userID, mongoClient)
+			accountIDSTR := processTier1Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
+			spellIndex, _ := getSpellIndex(accountID, mongoClient)
 			spellIndexJSON, _ := json.Marshal(spellIndex)
 			spellIndexData := "?" + string(spellIndexJSON)
 			chainWriteResponse(packetCode, spellIndexData, byteLimiter, clientConnection, "SPELLINDEX")
@@ -362,18 +328,36 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		if packetCode == "SU#" {
 			clientResponse = packetCode
 			fmt.Println("Update Spell Index packet received!")
-			userID, spellID := processTier2Packet(packetMessage)
-			clientResponse += "?" + addSpell(userID, spellID, mongoClient)
+			accountIDSTR, spellID := processTier2Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
+			clientResponse += "?" + addSpell(accountID, spellID, mongoClient)
 			writeResponse(clientResponse, clientConnection)
 		}
 		if packetCode == "VR#" {
 			clientResponse = packetCode
 			fmt.Println("Load vital packet received!")
-			userID := processTier1Packet(packetMessage)
-			vital, _ := getVital(userID, mongoClient)
+			accountIDSTR := processTier1Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
+			vital, _ := getVital(accountID, mongoClient)
 			vitalJSON, _ := json.Marshal(vital)
 			vitalData := "?" + string(vitalJSON)
 			chainWriteResponse(packetCode, vitalData, byteLimiter, clientConnection, "PROFILE")
+		}
+		if packetCode == "BR#" {
+			clientResponse = packetCode
+			fmt.Println("Read for Battle packet received!")
+			accountIDSTR := processTier1Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
+			vital, _ := getVital(accountID, mongoClient)
+			inventory, _ := getInventory(accountID, mongoClient)
+			spellIndex, _ := getSpellIndex(accountID, mongoClient)
+			loadout, _ := getLoadout(accountID, mongoClient)
+			vitalJSON, _ := json.Marshal(vital)
+			inventoryJSON, _ := json.Marshal(inventory)
+			spellIndexJSON, _ := json.Marshal(spellIndex)
+			loadoutJSON, _ := json.Marshal(loadout)
+			battlePlayerData := "?" + string(vitalJSON) + "?" + string(inventoryJSON) + "?" + string(spellIndexJSON) + "?" + string(loadoutJSON)
+			chainWriteResponse(packetCode, battlePlayerData, byteLimiter, clientConnection, "BATTLE")
 		}
 		if packetMessage == "STOP" {
 			fmt.Println("Client connection has exited")
@@ -594,16 +578,16 @@ func handleLogin(username string, password string, mongoClient *mongo.Client) (s
 		}
 	}
 }
-func handleRegistration(username string, password string, mongoClient *mongo.Client) (string, bool) {
+func handleRegistration(username string, password string, mongoClient *mongo.Client) (string, bool, uuid.UUID) {
 	if !lookForUser(username, mongoClient) {
-		createUser(username, password, mongoClient)
-		return "Account created", true
+		accountID := createUser(username, password, mongoClient)
+		return "Account created", true, accountID
 	} else {
 		fmt.Println(username, " is not available")
-		return "Username is not available", false
+		return "Username is not available", false, uuid.New()
 	}
 }
-func createUser(username string, password string, mongoClient *mongo.Client) {
+func createUser(username string, password string, mongoClient *mongo.Client) uuid.UUID {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	database := mongoClient.Database("player")
@@ -621,6 +605,7 @@ func createUser(username string, password string, mongoClient *mongo.Client) {
 		log.Fatal(err)
 	}
 	fmt.Println("New user added to db : ", createResult.InsertedID)
+	return freshUser.Account_id
 }
 func lookForUser(username string, mongoClient *mongo.Client) bool {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -708,7 +693,7 @@ func updateUserLastPosition(target_uuid uuid.UUID, lastPosition Position, mongoC
 	}
 	return true
 }
-func createVital(userID string, mongoClient *mongo.Client) bool {
+func createVital(userID string, accountID uuid.UUID, mongoClient *mongo.Client) bool {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -719,7 +704,7 @@ func createVital(userID string, mongoClient *mongo.Client) bool {
 
 	var freshVital PlayerVital
 	freshVital.ObjectID = primitive.NewObjectID()
-	freshVital.User_id = userID
+	freshVital.Account_id = accountID
 	freshVital.PlayerProfile.Name = userID
 	freshVital.PlayerProfile.Level = 1
 	freshVital.PlayerProfile.Age = 0
@@ -750,7 +735,7 @@ func createVital(userID string, mongoClient *mongo.Client) bool {
 	fmt.Println("Fresh Vital created for user: ", userID, " insertID: ", insertResult.InsertedID)
 	return true
 }
-func getVital(userID string, mongoClient *mongo.Client) (*PlayerVital, bool) {
+func getVital(accountID uuid.UUID, mongoClient *mongo.Client) (*PlayerVital, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -758,7 +743,7 @@ func getVital(userID string, mongoClient *mongo.Client) (*PlayerVital, bool) {
 	}
 	database := mongoClient.Database("player")
 	profile := database.Collection("vital")
-	filterCursor, err := profile.Find(cxt, bson.M{"user_id": userID})
+	filterCursor, err := profile.Find(cxt, bson.M{"uuid": accountID})
 	if err != nil {
 		fmt.Println(err)
 		panic(err)
@@ -772,18 +757,18 @@ func getVital(userID string, mongoClient *mongo.Client) (*PlayerVital, bool) {
 	}
 	return nil, true
 }
-func updateProfile_EXP(userID string, streamed_exp float64, mongoClient *mongo.Client) string {
+func updateProfile_EXP(accountID uuid.UUID, streamed_exp float64, mongoClient *mongo.Client) string {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
 		panic(err)
 	}
-	playerVital, profileFound := getVital(userID, mongoClient)
+	playerVital, profileFound := getVital(accountID, mongoClient)
 	newTotalExp := playerVital.PlayerProfile.Total_EXP + streamed_exp
 	if profileFound {
 		database := mongoClient.Database("player")
 		profile := database.Collection("vital")
-		match := bson.M{"user_id": userID}
+		match := bson.M{"uuid": accountID}
 		totalEXP := playerVital.PlayerProfile.Current_EXP + streamed_exp
 		if totalEXP >= playerVital.PlayerProfile.Max_EXP {
 			bufferEXP := 0.0
@@ -821,7 +806,7 @@ func updateProfile_EXP(userID string, streamed_exp float64, mongoClient *mongo.C
 	}
 	return "vital entry not found"
 }
-func createSpellIndex(userID string, mongoClient *mongo.Client) bool {
+func createSpellIndex(accountID uuid.UUID, mongoClient *mongo.Client) bool {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -832,7 +817,7 @@ func createSpellIndex(userID string, mongoClient *mongo.Client) bool {
 
 	var freshSpellIndex PlayerSpellIndex
 	freshSpellIndex.ObjectID = primitive.NewObjectID()
-	freshSpellIndex.User_id = userID
+	freshSpellIndex.Account_id = accountID
 	freshSpellIndex.Spell_index = make([]Spell, 0)
 
 	insertResult, err := spellIndex.InsertOne(cxt, freshSpellIndex)
@@ -840,10 +825,10 @@ func createSpellIndex(userID string, mongoClient *mongo.Client) bool {
 		fmt.Println(err)
 		return false
 	}
-	fmt.Println("Fresh Spell index created for user: ", userID, " insertID: ", insertResult.InsertedID)
+	fmt.Println("Fresh Spell index created! insertID: ", insertResult.InsertedID)
 	return true
 }
-func getSpellIndex(userID string, mongoClient *mongo.Client) (*PlayerSpellIndex, bool) {
+func getSpellIndex(accountID uuid.UUID, mongoClient *mongo.Client) (*PlayerSpellIndex, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -851,7 +836,7 @@ func getSpellIndex(userID string, mongoClient *mongo.Client) (*PlayerSpellIndex,
 	}
 	database := mongoClient.Database("player")
 	spellIndex := database.Collection("spellIndex")
-	filterCursor, err := spellIndex.Find(cxt, bson.M{"user_id": userID})
+	filterCursor, err := spellIndex.Find(cxt, bson.M{"uuid": accountID})
 	if err != nil {
 		fmt.Println(err)
 		panic(err)
@@ -865,7 +850,7 @@ func getSpellIndex(userID string, mongoClient *mongo.Client) (*PlayerSpellIndex,
 	}
 	return nil, true
 }
-func addSpell(userID string, spellID string, mongoClient *mongo.Client) string {
+func addSpell(accountID uuid.UUID, spellID string, mongoClient *mongo.Client) string {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -876,7 +861,7 @@ func addSpell(userID string, spellID string, mongoClient *mongo.Client) string {
 	retrievedSpell, spellFound := getSpell(spellID, mongoClient)
 	if spellFound {
 		entryArea := "spell_index"
-		match := bson.M{"user_id": userID}
+		match := bson.M{"uuid": accountID}
 		change := bson.M{"$push": bson.M{entryArea: retrievedSpell}}
 		updateResponse, err := spellIndex.UpdateOne(cxt, match, change)
 		fmt.Println(updateResponse)
@@ -913,7 +898,7 @@ func getSpell(spellID string, mongoClient *mongo.Client) (*Spell, bool) {
 	retrievedItem := spellResult[0]
 	return &retrievedItem, true
 }
-func getInventory(userID string, mongoClient *mongo.Client) (*PlayerInventory, bool) {
+func getInventory(accountID uuid.UUID, mongoClient *mongo.Client) (*PlayerInventory, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -921,7 +906,7 @@ func getInventory(userID string, mongoClient *mongo.Client) (*PlayerInventory, b
 	}
 	database := mongoClient.Database("player")
 	inventory := database.Collection("inventory")
-	filterCursor, err := inventory.Find(cxt, bson.M{"user_id": userID})
+	filterCursor, err := inventory.Find(cxt, bson.M{"uuid": accountID})
 	if err != nil {
 		fmt.Println(err)
 		panic(err)
@@ -935,7 +920,7 @@ func getInventory(userID string, mongoClient *mongo.Client) (*PlayerInventory, b
 	}
 	return nil, true
 }
-func createInventory(userID string, mongoClient *mongo.Client) bool {
+func createInventory(accountID uuid.UUID, mongoClient *mongo.Client) bool {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -946,7 +931,7 @@ func createInventory(userID string, mongoClient *mongo.Client) bool {
 
 	var freshInventory PlayerInventory
 	freshInventory.ObjectID = primitive.NewObjectID()
-	freshInventory.User_id = userID
+	freshInventory.Account_id = accountID
 
 	freshInventory.Equipment.Head.Collection = make([]Item, 0)
 	freshInventory.Equipment.Body.Collection = make([]Item, 0)
@@ -963,10 +948,10 @@ func createInventory(userID string, mongoClient *mongo.Client) bool {
 		fmt.Println(err)
 		return false
 	}
-	fmt.Println("Fresh Inventory created for user: ", userID, " insertID: ", insertResult.InsertedID)
+	fmt.Println("Fresh Inventory created for user! insertID: ", insertResult.InsertedID)
 	return true
 }
-func createLoadout(userID string, mongoClient *mongo.Client) bool {
+func createLoadout(accountID uuid.UUID, mongoClient *mongo.Client) bool {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -977,7 +962,7 @@ func createLoadout(userID string, mongoClient *mongo.Client) bool {
 
 	var freshLoadout PlayerLoadout
 	freshLoadout.ObjectID = primitive.NewObjectID()
-	freshLoadout.User_id = userID
+	freshLoadout.Account_id = accountID
 
 	freshLoadout.Head = Item{}
 	freshLoadout.Body = Item{}
@@ -992,10 +977,10 @@ func createLoadout(userID string, mongoClient *mongo.Client) bool {
 		fmt.Println(err)
 		return false
 	}
-	fmt.Println("Fresh Loadout created for user: ", userID, " insertID: ", insertResult.InsertedID)
+	fmt.Println("Fresh Loadout created for user! insertID: ", insertResult.InsertedID)
 	return true
 }
-func getLoadout(userID string, mongoClient *mongo.Client) (*PlayerLoadout, bool) {
+func getLoadout(accountID uuid.UUID, mongoClient *mongo.Client) (*PlayerLoadout, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -1003,7 +988,7 @@ func getLoadout(userID string, mongoClient *mongo.Client) (*PlayerLoadout, bool)
 	}
 	database := mongoClient.Database("player")
 	profile := database.Collection("loadout")
-	filterCursor, err := profile.Find(cxt, bson.M{"user_id": userID})
+	filterCursor, err := profile.Find(cxt, bson.M{"uuid": accountID})
 	if err != nil {
 		fmt.Println(err)
 		panic(err)
@@ -1043,7 +1028,7 @@ func getItem(itemID string, mongoClient *mongo.Client) (*Item, bool) {
 	retrievedItem := itemResult[0]
 	return &retrievedItem, true
 }
-func equipItem(userID string, itemID string, mongoClient *mongo.Client) string {
+func equipItem(accountID uuid.UUID, itemID string, mongoClient *mongo.Client) string {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -1054,7 +1039,7 @@ func equipItem(userID string, itemID string, mongoClient *mongo.Client) string {
 	retrievedItem, itemFound := getItem(itemID, mongoClient)
 	if itemFound {
 		entryArea := retrievedItem.Item_type
-		match := bson.M{"user_id": userID}
+		match := bson.M{"uuid": accountID}
 		change := bson.M{"$set": bson.M{entryArea: retrievedItem}}
 		updateResponse, err := loadout.UpdateOne(cxt, match, change)
 		fmt.Println(updateResponse)
@@ -1062,12 +1047,12 @@ func equipItem(userID string, itemID string, mongoClient *mongo.Client) string {
 			fmt.Println(err)
 			return "EQUIP$0"
 		}
-		updateVital(userID, retrievedItem, "add", mongoClient)
+		updateVital(accountID, retrievedItem, "add", mongoClient)
 		return "EQUIP$1"
 	}
 	return "EQUIP$0"
 }
-func unequipItem(userID string, itemID string, mongoClient *mongo.Client) string {
+func unequipItem(accountID uuid.UUID, itemID string, mongoClient *mongo.Client) string {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -1078,7 +1063,7 @@ func unequipItem(userID string, itemID string, mongoClient *mongo.Client) string
 	retrievedItem, itemFound := getItem(itemID, mongoClient)
 	if itemFound {
 		entryArea := retrievedItem.Item_type
-		match := bson.M{"user_id": userID}
+		match := bson.M{"uuid": accountID}
 		change := bson.M{"$set": bson.M{entryArea: Item{}}}
 		updateResponse, err := loadout.UpdateOne(cxt, match, change)
 		fmt.Println(updateResponse)
@@ -1086,12 +1071,12 @@ func unequipItem(userID string, itemID string, mongoClient *mongo.Client) string
 			fmt.Println(err)
 			return "UNEQUIP$0"
 		}
-		updateVital(userID, retrievedItem, "remove", mongoClient)
+		updateVital(accountID, retrievedItem, "remove", mongoClient)
 		return "UNEQUIP$1"
 	}
 	return "UNEQUIP$0"
 }
-func updateVital(userID string, item *Item, operation string, mongoClient *mongo.Client) *PlayerVital {
+func updateVital(accountID uuid.UUID, item *Item, operation string, mongoClient *mongo.Client) *PlayerVital {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -1099,11 +1084,11 @@ func updateVital(userID string, item *Item, operation string, mongoClient *mongo
 	}
 	database := mongoClient.Database("player")
 	vital := database.Collection("vital")
-	retrievedVital, _ := getVital(userID, mongoClient)
+	retrievedVital, _ := getVital(accountID, mongoClient)
 	originalStats := retrievedVital.Stats
 	updatedStats := updateStatsByItem(&originalStats, item, operation)
 	retrievedVital.Stats = *updatedStats
-	match := bson.M{"user_id": userID}
+	match := bson.M{"uuid": accountID}
 	change := bson.M{"$set": bson.D{{"profile", retrievedVital.PlayerProfile}, {"stats", retrievedVital.Stats}}}
 	updateResponse, err := vital.UpdateOne(cxt, match, change)
 	fmt.Println(updateResponse)
@@ -1112,7 +1097,7 @@ func updateVital(userID string, item *Item, operation string, mongoClient *mongo
 	}
 	return retrievedVital
 }
-func addInventoryItem(userID string, itemID string, mongoClient *mongo.Client) string {
+func addInventoryItem(accountID uuid.UUID, itemID string, mongoClient *mongo.Client) string {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -1123,7 +1108,7 @@ func addInventoryItem(userID string, itemID string, mongoClient *mongo.Client) s
 	retrievedItem, itemFound := getItem(itemID, mongoClient)
 	if itemFound {
 		entryArea := "equipment." + retrievedItem.Item_type + ".collection"
-		match := bson.M{"user_id": userID}
+		match := bson.M{"uuid": accountID}
 		change := bson.M{"$push": bson.M{entryArea: retrievedItem}}
 		updateResponse, err := inventory.UpdateOne(cxt, match, change)
 		fmt.Println(updateResponse)

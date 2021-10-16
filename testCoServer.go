@@ -169,6 +169,12 @@ type Position struct {
 	Position_y float64 `json:"pos_y" default:"1" bson:"pos_y, omitempty"`
 	Position_z float64 `json:"pos_z" default:"0" bson:"pos_z, omitempty"`
 }
+type BattlePacket struct {
+	Vital      *PlayerVital      `json:"vital" default:"" bson:"vital, omitempty"`
+	Inventory  *PlayerInventory  `json:"inventory" default:"" bson:"inventory, omitempty"`
+	SpellIndex *PlayerSpellIndex `json:"spellIndex" default:"" bson:"spellIndex, omitempty"`
+	Loadout    *PlayerLoadout    `json:"loadout" default:"" bson:"loadout, omitempty"`
+}
 type Map struct {
 	ConnectedClients map[uuid.UUID]Client
 }
@@ -195,6 +201,24 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		}
 		packetCode, packetMessage := packetDissect(netData)
 		fmt.Println(netData)
+		if packetCode == "BR#" {
+			clientResponse = packetCode
+			fmt.Println("Read for Battle packet received!")
+			accountIDSTR := processTier1Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
+			var freshBattlePacket BattlePacket
+			vital, _ := getVital(accountID, mongoClient)
+			inventory, _ := getInventory(accountID, mongoClient)
+			spellIndex, _ := getSpellIndex(accountID, mongoClient)
+			loadout, _ := getLoadout(accountID, mongoClient)
+			freshBattlePacket.Vital = vital
+			freshBattlePacket.Inventory = inventory
+			freshBattlePacket.SpellIndex = spellIndex
+			freshBattlePacket.Loadout = loadout
+			battlePacketJSON, _ := json.Marshal(freshBattlePacket)
+			battlePlayerData := "?" + string(battlePacketJSON)
+			chainWriteResponse(packetCode, battlePlayerData, byteLimiter, clientConnection, "BATTLE")
+		}
 		if packetCode == "HB#" {
 			fmt.Println("Heartbeat packet received!")
 			accountID, x, y, z := processTier4Packet(packetMessage)
@@ -342,22 +366,6 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			vitalJSON, _ := json.Marshal(vital)
 			vitalData := "?" + string(vitalJSON)
 			chainWriteResponse(packetCode, vitalData, byteLimiter, clientConnection, "PROFILE")
-		}
-		if packetCode == "BR#" {
-			clientResponse = packetCode
-			fmt.Println("Read for Battle packet received!")
-			accountIDSTR := processTier1Packet(packetMessage)
-			accountID, _ := uuid.Parse(accountIDSTR)
-			vital, _ := getVital(accountID, mongoClient)
-			inventory, _ := getInventory(accountID, mongoClient)
-			spellIndex, _ := getSpellIndex(accountID, mongoClient)
-			loadout, _ := getLoadout(accountID, mongoClient)
-			vitalJSON, _ := json.Marshal(vital)
-			inventoryJSON, _ := json.Marshal(inventory)
-			spellIndexJSON, _ := json.Marshal(spellIndex)
-			loadoutJSON, _ := json.Marshal(loadout)
-			battlePlayerData := "?" + string(vitalJSON) + "?" + string(inventoryJSON) + "?" + string(spellIndexJSON) + "?" + string(loadoutJSON)
-			chainWriteResponse(packetCode, battlePlayerData, byteLimiter, clientConnection, "BATTLE")
 		}
 		if packetMessage == "STOP" {
 			fmt.Println("Client connection has exited")

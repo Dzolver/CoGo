@@ -170,6 +170,7 @@ type Position struct {
 	Position_z float64 `json:"pos_z" default:"0" bson:"pos_z, omitempty"`
 }
 type BattlePacket struct {
+	Account_id uuid.UUID         `json:"uuid" bson:"uuid, omitempty"`
 	Vital      *PlayerVital      `json:"vital" default:"" bson:"vital, omitempty"`
 	Inventory  *PlayerInventory  `json:"inventory" default:"" bson:"inventory, omitempty"`
 	SpellIndex *PlayerSpellIndex `json:"spellIndex" default:"" bson:"spellIndex, omitempty"`
@@ -177,6 +178,14 @@ type BattlePacket struct {
 }
 type Map struct {
 	ConnectedClients map[uuid.UUID]Client
+}
+type Party struct {
+	Party_id uuid.UUID   `json:"party_id" bson:"party_id,omitempty"`
+	Members  []uuid.UUID `json:"members" bson:"members,omitempty"`
+}
+type BattleSession struct {
+	Battle_id  uuid.UUID       `json:"battle_id" bson:"battle_id,omitempty"`
+	Turn_cycle map[int]float64 `json:"turn_cycle" bson:"turn_cycle,omitempty"`
 }
 
 var count = 0
@@ -211,6 +220,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			inventory, _ := getInventory(accountID, mongoClient)
 			spellIndex, _ := getSpellIndex(accountID, mongoClient)
 			loadout, _ := getLoadout(accountID, mongoClient)
+			freshBattlePacket.Account_id = accountID
 			freshBattlePacket.Vital = vital
 			freshBattlePacket.Inventory = inventory
 			freshBattlePacket.SpellIndex = spellIndex
@@ -332,6 +342,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 				createLoadout(accountID, mongoClient)
 				createSpellIndex(accountID, mongoClient)
 				createVital(username, accountID, mongoClient)
+				addSpell(accountID, "Fireball", mongoClient)
 				clientResponse = "RS#"
 			} else if !valid {
 				//Register fail
@@ -1119,6 +1130,31 @@ func addInventoryItem(accountID uuid.UUID, itemID string, mongoClient *mongo.Cli
 			return "Item addition failed!"
 		}
 		return "Item added successfully!"
+	}
+	return "Item does not exist!"
+}
+func removeInventoryItem(accountID uuid.UUID, itemID string, mongoClient *mongo.Client) string {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("player")
+	inventory := database.Collection("inventory")
+	retrievedItem, itemFound := getItem(itemID, mongoClient)
+	if itemFound {
+		entityType := strings.ToLower(retrievedItem.Entity)
+		entryArea := entityType + "." + retrievedItem.Item_type + ".collection"
+		match := bson.M{"uuid": accountID}
+		arr := []Item{*retrievedItem}
+		change := bson.M{"$pull": bson.M{entryArea: bson.M{"$in": arr}}}
+		updateResponse, err := inventory.UpdateOne(cxt, match, change)
+		fmt.Println(updateResponse)
+		if err != nil {
+			fmt.Println(err)
+			return "Item deletion failed!"
+		}
+		return "Item deletion successfully!"
 	}
 	return "Item does not exist!"
 }

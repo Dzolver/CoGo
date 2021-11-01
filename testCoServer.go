@@ -157,12 +157,11 @@ type PlayerVital struct {
 	BaseStats     Stats              `json:"base_stats" default:"" bson:"base_stats, omitempty"`
 }
 type Client struct {
-	ObjectID    primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
-	Account_id  uuid.UUID          `json:"uuid" bson:"uuid, omitempty"`
-	ConnectTime time.Time          `json:"connect_time" bson:"connect_time, omitempty"`
-	TCPConnect  net.Conn           `json:"tcp_addr" bson:"tcp_addr, omitempty"`
-	UDPAddress  *net.UDPAddr       `json:"udp_addr" bson:"udp_addr, omitempty"`
-	Position    Position           `json:"position" bson:"position, omitempty"`
+	Account_id       uuid.UUID    `json:"uuid" bson:"uuid, omitempty"`
+	ConnectTime      time.Time    `json:"connect_time" bson:"connect_time, omitempty"`
+	UDPAddress       *net.UDPAddr `json:"udp_addr" bson:"udp_addr, omitempty"`
+	BroadcastAddress *net.UDPAddr `json:"broadcast_addr" bson:"broadcast_addr, omitempty"`
+	Position         Position     `json:"position" bson:"position, omitempty"`
 }
 type Position struct {
 	Position_x float64 `json:"pos_x" default:"0" bson:"pos_x, omitempty"`
@@ -177,7 +176,7 @@ type BattlePacket struct {
 	Loadout    *PlayerLoadout    `json:"loadout" default:"" bson:"loadout, omitempty"`
 }
 type Map struct {
-	ConnectedClients map[uuid.UUID]Client
+	ConnectedClients map[uuid.UUID]Client `json:"connected_clients" bson:"connected_clients, omitempty"`
 }
 type Party struct {
 	Party_id uuid.UUID   `json:"party_id" bson:"party_id,omitempty"`
@@ -471,18 +470,21 @@ func tcpListener(PORT string, cxt context.Context, mongoClient *mongo.Client) {
 		count++
 	}
 }
-func handleNewUDPConnection(accountID string, clientAddress *net.UDPAddr) bool {
+func handleNewUDPConnection(accountID string, broadcastAddress *net.UDPAddr, clientAddress *net.UDPAddr) bool {
 	fmt.Println("Handling new UDP Connection!")
 	connected := false
 	target_uuid, _ := uuid.Parse(accountID)
 	if _, existing := mapInstance.ConnectedClients[target_uuid]; !existing {
 		//add new client connection to client map instance
 		var freshClient Client
+		target_uuid, _ := uuid.Parse(accountID)
+		freshClient.Account_id = target_uuid
 		freshClient.ConnectTime = time.Now()
 		freshClient.UDPAddress = clientAddress
+		freshClient.BroadcastAddress = broadcastAddress
 		mapInstance.ConnectedClients[target_uuid] = freshClient
 		for key, element := range mapInstance.ConnectedClients {
-			fmt.Println("uuid:", key, "=>", "client address:", element.UDPAddress)
+			fmt.Println("uuid:", key, "=>", "client broadcast address:", element.BroadcastAddress)
 		}
 		connected = true
 	}
@@ -491,15 +493,19 @@ func handleNewUDPConnection(accountID string, clientAddress *net.UDPAddr) bool {
 func handleUDPConnection(netData string, clientAddress *net.UDPAddr, listenerConnection *net.UDPConn, mongoClient *mongo.Client) {
 	packetCode, packetMessage := packetDissect(netData)
 	if packetCode != "" {
-		fmt.Println("UDP Net data:" + netData)
-		fmt.Println("Packetcode : " + packetCode)
-		fmt.Println("Packet msg : " + packetMessage)
+		//fmt.Println("UDP Net data:" + netData)
+		//fmt.Println("Packetcode : " + packetCode)
+		//fmt.Println("Packet msg : " + packetMessage)
 		if packetCode == "UDPC#" {
 			clientResponse := packetCode
 			fmt.Println("Start UDP stream packet received!")
-			accountID := processTier1Packet(packetMessage)
-			connected := handleNewUDPConnection(accountID, clientAddress)
-			clientResponse += "?" + strconv.FormatBool(connected)
+			accountID, broadcastAddr := processTier2Packet(packetMessage)
+			broadcastAddress, _ := net.ResolveUDPAddr("udp", broadcastAddr)
+			connected := handleNewUDPConnection(accountID, broadcastAddress, clientAddress)
+			if connected {
+				broadcastNewPlayer(accountID)
+			}
+			clientResponse += "?CONNECTED TO SERVER:" + strconv.FormatBool(connected)
 			data := []byte(clientResponse)
 			listenerConnection.WriteToUDP(data, clientAddress)
 		}
@@ -512,22 +518,43 @@ func handleUDPConnection(netData string, clientAddress *net.UDPAddr, listenerCon
 				player.Position.Position_z, _ = strconv.ParseFloat(z, 64)
 				//updateUserLastPosition(target_uuid, player.Position, mongoClient)
 				mapInstance.ConnectedClients[target_uuid] = player
+				// clientResponse := "Got your M1# message!"
+				// data := []byte(clientResponse)
+				// listenerConnection.WriteToUDP(data, clientAddress)
 			}
 			//broadcastSend <- mapInstance
 		}
 	}
 }
-func broadcast() {
+func broadcastMap() {
 	local, _ := net.ResolveUDPAddr("udp4", ":6666")
-	broadcastAddress, _ := net.ResolveUDPAddr("udp", "255.255.255.255"+":26950")
+	broadcastAddress, _ := net.ResolveUDPAddr("udp", "255.255.255.255"+":23456")
 	connection, _ := net.DialUDP("udp", local, broadcastAddress)
 	defer connection.Close()
-	movementData := ""
-	for _, client := range mapInstance.ConnectedClients {
-		clientJSON, _ := json.Marshal(client)
-		movementData += "?" + string(clientJSON)
+	mapData := ""
+	// for _, client := range mapInstance.ConnectedClients {
+	// 	clientJSON, _ := json.Marshal(client)
+	// 	movementData += "?" + string(clientJSON)
+	// }
+	mapJSON, _ := json.Marshal(mapInstance.ConnectedClients)
+	mapData += string(mapJSON)
+	broadcastData := "BRO#"
+	broadcastData += mapData
+	fmt.Println("MAP DATA : " + mapData)
+	_, err := connection.Write([]byte(mapData))
+	if err != nil {
+		panic(err)
 	}
-	_, err := connection.Write([]byte(movementData))
+}
+func broadcastNewPlayer(accountID string) {
+	local, _ := net.ResolveUDPAddr("udp4", ":6666")
+	broadcastAddress, _ := net.ResolveUDPAddr("udp", "255.255.255.255"+":23456")
+	connection, _ := net.DialUDP("udp", local, broadcastAddress)
+	defer connection.Close()
+	broadcastData := "NP#"
+	broadcastData += accountID
+	fmt.Println("New Player : " + broadcastData)
+	_, err := connection.Write([]byte(broadcastData))
 	if err != nil {
 		panic(err)
 	}
@@ -555,7 +582,7 @@ func udpListener(PORT string, cxt context.Context, mongoClient *mongo.Client) {
 		//fmt.Println(n, " UDP client address : ", clientAddress)
 		handleUDPConnection(incomingPacket, clientAddress, listenerConnection, mongoClient)
 		if len(mapInstance.ConnectedClients) > 0 {
-			broadcast()
+			broadcastMap()
 		}
 		// if strings.TrimSpace(string(buffer[0:n])) == "STOP" {
 		// 	fmt.Println("UDP client has exited!")

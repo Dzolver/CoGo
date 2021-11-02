@@ -329,6 +329,13 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			clientResponse += unequipFeedback
 			writeResponse(clientResponse, clientConnection)
 		}
+		if packetCode == "ML#" {
+			clientResponse = packetCode
+			fmt.Println("Map load packet received")
+			mapJSON, _ := json.Marshal(mapInstance.ConnectedClients)
+			mapData := "?" + string(mapJSON)
+			chainWriteResponse(packetCode, mapData, byteLimiter, clientConnection, "LOADOUT")
+		}
 		//Register
 		if packetCode == "R0#" {
 			clientResponse = packetCode

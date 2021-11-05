@@ -334,7 +334,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			fmt.Println("Map load packet received")
 			mapJSON, _ := json.Marshal(mapInstance.ConnectedClients)
 			mapData := "?" + string(mapJSON)
-			chainWriteResponse(packetCode, mapData, byteLimiter, clientConnection, "LOADOUT")
+			chainWriteResponse(packetCode, mapData, byteLimiter, clientConnection, "MAP")
 		}
 		//Register
 		if packetCode == "R0#" {

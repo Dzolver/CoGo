@@ -54,14 +54,15 @@ type Purse struct {
 	Bits float32 `default:"0" json:"bits" bson:"bits, omitempty"`
 }
 type Item struct {
-	ObjectID    primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
-	Item_id     string             `json:"item_id" default:"" bson:"item_id, omitempty"`
-	Item_type   string             `json:"item_type" default:"" bson:"item_type, omitempty"`
-	Entity      string             `json:"entity" bson:"entity, omitempty"`
-	Name        string             `json:"name" default:"" bson:"name, omitempty"`
-	Num         int32              `json:"num" default:"" bson:"num, omitempty"`
-	Description string             `json:"description" default:"" bson:"description, omitempty"`
-	Stats       Stats              `json:"stats" bson:"stats, omitempty"`
+	ObjectID     primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
+	Item_id      string             `json:"item_id" default:"" bson:"item_id, omitempty"`
+	Item_type    string             `json:"item_type" default:"" bson:"item_type, omitempty"`
+	Item_subtype string             `json:"item_subtype" default:"" bson:"item_subtype, omitempty"`
+	Entity       string             `json:"entity" bson:"entity, omitempty"`
+	Name         string             `json:"name" default:"" bson:"name, omitempty"`
+	Num          int32              `json:"num" default:"" bson:"num, omitempty"`
+	Description  string             `json:"description" default:"" bson:"description, omitempty"`
+	Stats        Stats              `json:"stats" bson:"stats, omitempty"`
 }
 type Stats struct {
 	Health       float64 `json:"health" default:"0" bson:"health"`
@@ -208,7 +209,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			return
 		}
 		packetCode, packetMessage := packetDissect(netData)
-		fmt.Println(netData)
+		//fmt.Println(netData)
 		if packetCode == "BR#" {
 			clientResponse = packetCode
 			fmt.Println("Read for Battle packet received!")
@@ -229,7 +230,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			chainWriteResponse(packetCode, battlePlayerData, byteLimiter, clientConnection, "BATTLE")
 		}
 		if packetCode == "HB#" {
-			fmt.Println("Heartbeat packet received!")
+			// fmt.Println("Heartbeat packet received!")
 			accountID, x, y, z := processTier4Packet(packetMessage)
 			target_uuid, _ := uuid.Parse(accountID)
 			var lastPosition Position
@@ -508,6 +509,7 @@ func handleUDPConnection(netData string, clientAddress *net.UDPAddr, listenerCon
 			fmt.Println("Start UDP stream packet received!")
 			accountID, broadcastAddr := processTier2Packet(packetMessage)
 			broadcastAddress, _ := net.ResolveUDPAddr("udp", broadcastAddr)
+			fmt.Println("User joined : " + accountID)
 			connected := handleNewUDPConnection(accountID, broadcastAddress, clientAddress)
 			if connected {
 				broadcastNewPlayer(accountID)
@@ -547,7 +549,8 @@ func broadcastMap() {
 	mapData += string(mapJSON)
 	broadcastData := "BRO#"
 	broadcastData += mapData
-	fmt.Println("MAP DATA : " + mapData)
+	//fmt.Println("MAP COUNT : ", len(mapInstance.ConnectedClients))
+	//fmt.Println("MAP DATA : " + mapData)
 	_, err := connection.Write([]byte(mapData))
 	if err != nil {
 		panic(err)
@@ -732,8 +735,8 @@ func updateUserLastPosition(target_uuid uuid.UUID, lastPosition Position, mongoC
 	change := bson.M{"$set": bson.D{
 		{"last_position", lastPosition},
 	}}
-	updateResponse, err := user.UpdateOne(cxt, match, change)
-	fmt.Printf("Updated %v Documents!\n", updateResponse.ModifiedCount)
+	_, err := user.UpdateOne(cxt, match, change)
+	//fmt.Printf("Updated %v Documents!\n", updateResponse.ModifiedCount)
 	if err != nil {
 		fmt.Println(err)
 		return false

@@ -30,6 +30,8 @@ type User struct {
 	Active       int                `json:"active" default:"" bson:"active,omitempty"`
 	Logins       int                `json:"logins" default:"" bson:"logins, omitempty"`
 	LastPosition Position           `json:"last_position" bson:"last_position,omitempty"`
+	LastRegion   string             `json:"last_region" default:"" bson:"last_region,omitempty"`
+	LastLevel    string             `json:"last_level" default:"" bson:"last_level,omitempty"`
 }
 type PlayerInventory struct {
 	ObjectID   primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
@@ -176,6 +178,7 @@ type BattlePacket struct {
 	Inventory  *PlayerInventory  `json:"inventory" default:"" bson:"inventory, omitempty"`
 	SpellIndex *PlayerSpellIndex `json:"spellIndex" default:"" bson:"spellIndex, omitempty"`
 	Loadout    *PlayerLoadout    `json:"loadout" default:"" bson:"loadout, omitempty"`
+	Monsters   *[]Monster        `json:"monsters" default:"" bson:"monsters, omitempty"`
 }
 type Map struct {
 	ConnectedClients map[uuid.UUID]Client `json:"connected_clients" bson:"connected_clients, omitempty"`
@@ -209,13 +212,15 @@ type NPC struct {
 	Dialogue []string           `json:"dialogue" default:"" bson:"dialogue, omitempty"`
 }
 type Monster struct {
-	ObjectID  primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
-	MobID     string             `json:"mob_id" default:"" bson:"mobID,omitempty"`
-	MobVitals MobVitals          `json:"mob_vitals" default:"" bson:"mobVitals,omitempty"`
+	ObjectID       primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
+	MobID          string             `json:"mob_id" default:"" bson:"mobID,omitempty"`
+	GoldGain       int                `json:"gold_gain" default:"" bson:"goldGain,omitempty"`
+	ExperienceGain int                `json:"experience_gain" default:"" bson:"experienceGain,omitempty"`
+	MobVitals      MobVitals          `json:"mob_vitals" default:"" bson:"mobVitals,omitempty"`
 }
 type MobVitals struct {
 	Profile        MobProfile `json:"profile" default:"" bson:"profile,omitempty"`
-	Stats          Stats      `json:"stats" default:"" bson:"stats,omitempty"`
+	Stats          MobStats   `json:"stats" default:"" bson:"stats,omitempty"`
 	AttackActions  []Spell    `json:"attack_actions" default:"" bson:"attackActions,omitempty"`
 	DefenseActions []Spell    `json:"defense_actions" default:"" bson:"defenseActions,omitempty"`
 }
@@ -230,6 +235,31 @@ type MobProfile struct {
 	Dexterity    float64  `json:"dexterity" default:"0" bson:"dexterity, omitempty"`
 	Charisma     float64  `json:"charisma" default:"0" bson:"charisma, omitempty"`
 	Luck         float64  `json:"luck" default:"0" bson:"luck, omitempty"`
+}
+type MobStats struct {
+	Health       float64 `json:"health" default:"0" bson:"health"`
+	MaxHealth    float64 `json:"maxHealth" default:"0" bson:"maxHealth"`
+	Mana         float64 `json:"mana" default:"0" bson:"mana"`
+	Attack       float64 `json:"attack" default:"0" bson:"attack"`
+	MagicAttack  float64 `json:"magicAttack" default:"0" bson:"magicAttack"`
+	Defense      float64 `json:"defense" default:"0" bson:"defense"`
+	MagicDefense float64 `json:"magicDefense" default:"0" bson:"magicDefense"`
+	Armor        float64 `json:"armor" default:"0" bson:"armor"`
+	Evasion      float64 `json:"evasion" default:"0" bson:"evasion"`
+	Accuracy     float64 `json:"accuracy" default:"0" bson:"accuracy"`
+	Agility      float64 `json:"agility" default:"0" bson:"agility"`
+	Willpower    float64 `json:"willpower" default:"0" bson:"willpower"`
+	FireRes      float64 `json:"fireRes" default:"0" bson:"fireRes"`
+	WaterRes     float64 `json:"waterRes" default:"0" bson:"waterRes"`
+	EarthRes     float64 `json:"earthRes" default:"0" bson:"earthRes"`
+	WindRes      float64 `json:"windRes" default:"0" bson:"windRes"`
+	IceRes       float64 `json:"iceRes" default:"0" bson:"iceRes"`
+	EnergyRes    float64 `json:"energyRes" default:"0" bson:"energyRes"`
+	NatureRes    float64 `json:"natureRes" default:"0" bson:"natureRes"`
+	PoisonRes    float64 `json:"poisonRes" default:"0" bson:"poisonRes"`
+	MetalRes     float64 `json:"metalRes" default:"0" bson:"metalRes"`
+	LightRes     float64 `json:"lightRes" default:"0" bson:"lightRes"`
+	DarkRes      float64 `json:"darkRes" default:"0" bson:"darkRes"`
 }
 
 var count = 0
@@ -282,18 +312,21 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		if packetCode == "BR#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Read for Battle packet received!"))
-			accountIDSTR := processTier1Packet(packetMessage)
+			accountIDSTR, levelID := processTier2Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			var freshBattlePacket BattlePacket
 			vital, _ := getVital(accountID, mongoClient)
 			inventory, _ := getInventory(accountID, mongoClient)
 			spellIndex, _ := getSpellIndex(accountID, mongoClient)
 			loadout, _ := getLoadout(accountID, mongoClient)
+			level := getLevel(levelID, mongoClient)
+			monsters := getMonsters(level.Monsters, mongoClient)
 			freshBattlePacket.Account_id = accountID
 			freshBattlePacket.Vital = vital
 			freshBattlePacket.Inventory = inventory
 			freshBattlePacket.SpellIndex = spellIndex
 			freshBattlePacket.Loadout = loadout
+			freshBattlePacket.Monsters = monsters
 			battlePacketJSON, _ := json.Marshal(freshBattlePacket)
 			battlePlayerData := "?" + string(battlePacketJSON)
 			chainWriteResponse(packetCode, battlePlayerData, byteLimiter, clientConnection, "BATTLE")
@@ -723,6 +756,8 @@ func createUser(username string, password string, mongoClient *mongo.Client) uui
 	freshUser.Active = 0
 	freshUser.Logins = 0
 	freshUser.LastPosition = Position{}
+	freshUser.LastLevel = "00001"
+	freshUser.LastRegion = "001"
 	createResult, err := users.InsertOne(cxt, freshUser)
 	if err != nil {
 		log.Fatal(err)
@@ -773,6 +808,155 @@ func validateUser(player *User, mongoClient *mongo.Client) bool {
 		return false
 	}
 	return true
+}
+func getRegion(regionID string, mongoClient *mongo.Client) *Region {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("world")
+	regions := database.Collection("regions")
+	filterCursor, err := regions.Find(cxt, bson.M{"regionID": regionID})
+	if err != nil {
+		fmt.Println(Failure(err))
+		panic(err)
+	}
+	var filterResult []Region
+	if err = filterCursor.All(cxt, &filterResult); err != nil {
+		log.Fatal(err)
+	}
+	if len(filterResult) == 1 {
+		return &filterResult[0]
+	}
+	var dummyRegion Region
+	return &dummyRegion
+}
+func getLevel(levelID string, mongoClient *mongo.Client) *Level {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("world")
+	levels := database.Collection("levels")
+	filterCursor, err := levels.Find(cxt, bson.M{"levelID": levelID})
+	if err != nil {
+		fmt.Println(Failure(err))
+		panic(err)
+	}
+	var filterResult []Level
+	if err = filterCursor.All(cxt, &filterResult); err != nil {
+		log.Fatal(err)
+	}
+	if len(filterResult) == 1 {
+		return &filterResult[0]
+	}
+	var dummyLevel Level
+	return &dummyLevel
+}
+func getNPC(npcID string, mongoClient *mongo.Client) *NPC {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("world")
+	npcs := database.Collection("npcs")
+	filterCursor, err := npcs.Find(cxt, bson.M{"npcID": npcID})
+	if err != nil {
+		fmt.Println(Failure(err))
+		panic(err)
+	}
+	var filterResult []NPC
+	if err = filterCursor.All(cxt, &filterResult); err != nil {
+		log.Fatal(err)
+	}
+	if len(filterResult) == 1 {
+		return &filterResult[0]
+	}
+	var dummyNPC NPC
+	return &dummyNPC
+}
+func getNPCs(npcIDs []string, mongoClient *mongo.Client) *[]NPC {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("world")
+	npcs := database.Collection("npcs")
+	filterCursor, err := npcs.Find(cxt, bson.M{"npcID": bson.M{"$in": npcIDs}})
+	if err != nil {
+		fmt.Println(Failure(err))
+		panic(err)
+	}
+	var filterResult []NPC
+	if err = filterCursor.All(cxt, &filterResult); err != nil {
+		log.Fatal(err)
+	}
+	return &filterResult
+}
+func getMonster(monsterID string, mongoClient *mongo.Client) *Monster {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("world")
+	monsters := database.Collection("monsters")
+	filterCursor, err := monsters.Find(cxt, bson.M{"mobID": monsterID})
+	if err != nil {
+		fmt.Println(Failure(err))
+		panic(err)
+	}
+	var filterResult []Monster
+	if err = filterCursor.All(cxt, &filterResult); err != nil {
+		log.Fatal(err)
+	}
+	if len(filterResult) == 1 {
+		return &filterResult[0]
+	}
+	var dummyMonster Monster
+	return &dummyMonster
+}
+func getMonsters(monsterIDs []string, mongoClient *mongo.Client) *[]Monster {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("world")
+	monsters := database.Collection("monsters")
+	filterCursor, err := monsters.Find(cxt, bson.M{"mobID": bson.M{"$in": monsterIDs}})
+	if err != nil {
+		fmt.Println(Failure(err))
+		panic(err)
+	}
+	var filterResult []Monster
+	if err = filterCursor.All(cxt, &filterResult); err != nil {
+		log.Fatal(err)
+	}
+	return &filterResult
+}
+func getLevels(levelIDs []string, mongoClient *mongo.Client) *[]Level {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("world")
+	levels := database.Collection("levels")
+	filterCursor, err := levels.Find(cxt, bson.M{"levelID": bson.M{"$in": levelIDs}})
+	if err != nil {
+		fmt.Println(Failure(err))
+		panic(err)
+	}
+	var filterResult []Level
+	if err = filterCursor.All(cxt, &filterResult); err != nil {
+		log.Fatal(err)
+	}
+	return &filterResult
 }
 func getUser(userID string, mongoClient *mongo.Client) (*User, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)

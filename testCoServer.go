@@ -53,7 +53,7 @@ type PlayerLoadout struct {
 }
 
 type Purse struct {
-	Bits float32 `default:"0" json:"bits" bson:"bits, omitempty"`
+	Bits float64 `default:"0" json:"bits" bson:"bits, omitempty"`
 }
 type Item struct {
 	ObjectID     primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
@@ -173,6 +173,7 @@ type Position struct {
 	Position_z float64 `json:"pos_z" default:"0" bson:"pos_z, omitempty"`
 }
 type BattlePacket struct {
+	BattleID        uuid.UUID         `json:"battle_id" default:"" bson:"battle_id"`
 	Vital           *PlayerVital      `json:"vital" default:"" bson:"vital, omitempty"`
 	Inventory       *PlayerInventory  `json:"inventory" default:"" bson:"inventory, omitempty"`
 	SpellIndex      *PlayerSpellIndex `json:"spellIndex" default:"" bson:"spellIndex, omitempty"`
@@ -195,10 +196,7 @@ type Party struct {
 	Party_id uuid.UUID   `json:"party_id" bson:"party_id,omitempty"`
 	Members  []uuid.UUID `json:"members" bson:"members,omitempty"`
 }
-type BattleSession struct {
-	Battle_id  uuid.UUID       `json:"battle_id" bson:"battle_id,omitempty"`
-	Turn_cycle map[int]float64 `json:"turn_cycle" bson:"turn_cycle,omitempty"`
-}
+
 type Region struct {
 	ObjectID   primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
 	RegionID   string             `json:"region_id" default:"" bson:"regionID,omitempty"`
@@ -278,6 +276,21 @@ type LevelData struct {
 	Level     *Level      `json:"level" default:"" bson:"level"`
 	Residents *[]Resident `json:"residents" default:"" bson:"residents"`
 }
+type Sessions struct {
+	Battles map[uuid.UUID]BattleSession `json:"battle_sessions" default:"" bson:"battle_sessions"`
+}
+type BattleSession struct {
+	BattleID     uuid.UUID  `json:"battle_id" default:"" bson:"battle_id"`
+	Status       int        `json:"status" default:"0" bson:"status"`
+	Monsters     *[]Monster `json:"monsters" default:"" bson:"monsters"`
+	RewardMatrix []int      `json:"reward_matrix" default:"" bson:"reward_matrix"`
+	Reward       Reward     `json:"reward" default:"" bson:"reward"`
+}
+type Reward struct {
+	Gold     float64 `json:"gold" default:"0" bson:"gold"`
+	Exp      float64 `json:"exp" default:"0" bson:"exp"`
+	TotalExp float64 `json:"total_exp" default:"0" bson:"total_exp"`
+}
 
 var count = 0
 var PACKET_SIZE = 10240
@@ -287,7 +300,7 @@ var portNumbers = make(map[string]int)
 var portNumbersReversed = make(map[string]string)
 var portIndex = 1
 var mapInstance Map
-
+var sessions Sessions
 var (
 	Info           = Teal
 	IncomingPacket = Magenta
@@ -339,12 +352,17 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			loadout, _ := getLoadout(accountID, mongoClient)
 			level := getLevel(levelID, mongoClient)
 			monsters := getMonsters(level.Monsters, mongoClient)
+			//create BattleSession out of this information and add to the list of sessions
+			freshBattlePacket.MonsterQuantity = 1
+			battle := createBattle(monsters, freshBattlePacket.MonsterQuantity)
+
+			freshBattlePacket.BattleID = battle.BattleID
 			freshBattlePacket.Vital = vital
 			freshBattlePacket.Inventory = inventory
 			freshBattlePacket.SpellIndex = spellIndex
 			freshBattlePacket.Loadout = loadout
 			freshBattlePacket.Monsters = monsters
-			freshBattlePacket.MonsterQuantity = 2
+
 			battlePacketJSON, _ := json.Marshal(freshBattlePacket)
 			battlePlayerData := "?" + string(battlePacketJSON)
 			chainWriteResponse(packetCode, battlePlayerData, byteLimiter, clientConnection, "BATTLE")
@@ -353,7 +371,42 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			fmt.Println(IncomingPacket("Battle State Confirmation packet received!"))
 			// accountIDSTR := processTier1Packet(packetMessage)
 			// accountID, _ = uuid.Parse(accountIDSTR)
-
+		}
+		if packetCode == "BF#" {
+			clientResponse = packetCode
+			fmt.Println(IncomingPacket("Battle Finish packet received!"))
+			fmt.Println(Info(packetMessage))
+			//e.g: battleID?BF#1,1,1 -> battleID, [1,1,1]
+			accountIDSTR, battleIDSTR, rewardMatrixSTR := processTier3Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
+			battleID, _ := uuid.Parse(battleIDSTR)
+			//find out how much gold and exp is earned from the reward matrix
+			fmt.Println(Info(rewardMatrixSTR))
+			rewardMatrix := getArrayFromString(rewardMatrixSTR)
+			exp := 0.0
+			gold := 0.0
+			updateStatus := "False"
+			if entry, ok := sessions.Battles[battleID]; ok {
+				entry.RewardMatrix = rewardMatrix
+				entry.Status = 1
+				for index, reward := range entry.RewardMatrix {
+					monster := (*entry.Monsters)[index]
+					if reward == 1 {
+						entry.Reward.Exp += float64(monster.ExperienceGain)
+						entry.Reward.Gold += float64(monster.GoldGain)
+					}
+				}
+				exp = entry.Reward.Exp
+				gold = entry.Reward.Gold
+				//calculate exp and return total exp to entry.Reward.Totalexp
+				addBits(accountID, gold, mongoClient)
+				entry.Reward.TotalExp = updateProfile_EXP(accountID, entry.Reward.Exp, mongoClient)
+				sessions.Battles[battleID] = entry
+				updateStatus = "True"
+			}
+			clientResponse += "?" + strconv.FormatFloat(exp, 'f', -1, 64) + "," + strconv.FormatFloat(gold, 'f', -1, 64) + "," + updateStatus
+			fmt.Println(Info(clientResponse))
+			writeResponse(clientResponse, clientConnection)
 		}
 		if packetCode == "HB#" {
 			// fmt.Println("Heartbeat packet received!")
@@ -487,7 +540,9 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			accountIDSTR, streamedEXPString := processTier2Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			streamedEXP, _ := strconv.ParseFloat(streamedEXPString, 64)
-			clientResponse += "?" + updateProfile_EXP(accountID, streamedEXP, mongoClient)
+			newTotalEXP := updateProfile_EXP(accountID, streamedEXP, mongoClient)
+			newTotalEXPSTR := strconv.FormatFloat(newTotalEXP, 'E', -1, 64)
+			clientResponse += "?" + newTotalEXPSTR
 			writeResponse(clientResponse, clientConnection)
 		}
 		if packetCode == "LUE#" {
@@ -612,6 +667,21 @@ func processTier4Packet(packetMessage string) (string, string, string, string) {
 	item4 := strings.Split(packetMessage, "?")[3]
 	return item1, item2, item3, item4
 }
+func getArrayFromString(packetMessage string) []int {
+	var itemArray []int
+	arrayWithoutBrackets := strings.Split(strings.Split(packetMessage, "[")[1], "]")[0]
+	if !strings.Contains(arrayWithoutBrackets, ",") {
+		item, _ := strconv.Atoi(arrayWithoutBrackets)
+		itemArray = append(itemArray, item)
+	} else {
+		itemArrayStrings := strings.Split(arrayWithoutBrackets, ",")
+		for _, element := range itemArrayStrings {
+			item, _ := strconv.Atoi(element)
+			itemArray = append(itemArray, item)
+		}
+	}
+	return itemArray
+}
 func writeResponse(clientResponse string, clientConnection net.Conn) {
 	clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
 }
@@ -650,6 +720,28 @@ func chainWriteResponse(packetCode string, totalData string, byteLimiter int, cl
 	fmt.Println(Info("Size of ", serviceType, " data in bytes : ", len(totalByteData)))
 	fmt.Println(Info("Size of remaining ", serviceType, " in bytes : ", len(totalByteData)%byteLimiter))
 	fmt.Println(Info("Size of ", serviceType, " partitions : ", dataPartitions))
+}
+func createBattle(monsters *[]Monster, quantity int) *BattleSession {
+	var battle BattleSession
+	battle.BattleID = uuid.New()
+	battle.Status = 0
+	var createdMonsters []Monster
+	i := 0
+	var reward Reward
+	for i = 0; i < quantity; i++ {
+		rand.Seed(time.Now().UnixNano())
+		min := 0
+		max := len(*monsters) - 1
+		randomIndex := rand.Intn(max-min+1) + min
+		monster := (*monsters)[randomIndex]
+		createdMonsters = append(createdMonsters, monster)
+		battle.Monsters = &createdMonsters
+		battle.RewardMatrix = append(battle.RewardMatrix, 0)
+		reward.Gold += float64(monster.GoldGain)
+		reward.Exp += float64(monster.ExperienceGain)
+	}
+	sessions.Battles[battle.BattleID] = battle
+	return &battle
 }
 func tcpListener(PORT string, cxt context.Context, mongoClient *mongo.Client) {
 	listenerConnection, err := net.Listen("tcp", PORT)
@@ -1151,7 +1243,7 @@ func getVital(accountID uuid.UUID, mongoClient *mongo.Client) (*PlayerVital, boo
 	}
 	return nil, true
 }
-func updateProfile_EXP(accountID uuid.UUID, streamed_exp float64, mongoClient *mongo.Client) string {
+func updateProfile_EXP(accountID uuid.UUID, streamed_exp float64, mongoClient *mongo.Client) float64 {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -1160,14 +1252,17 @@ func updateProfile_EXP(accountID uuid.UUID, streamed_exp float64, mongoClient *m
 	playerVital, profileFound := getVital(accountID, mongoClient)
 	newTotalExp := playerVital.PlayerProfile.Total_EXP + streamed_exp
 	if profileFound {
+		fmt.Println(Success("Found player profile to update"))
 		database := mongoClient.Database("player")
 		profile := database.Collection("vital")
 		match := bson.M{"uuid": accountID}
 		totalEXP := playerVital.PlayerProfile.Current_EXP + streamed_exp
+		fmt.Println(Info(totalEXP, " (TotalEXP) = ", playerVital.PlayerProfile.Current_EXP, " (current exp) + ", streamed_exp, " (streamed exp)"))
 		if totalEXP >= playerVital.PlayerProfile.Max_EXP {
 			bufferEXP := 0.0
 			levelUpperLimit := 0
 			levelUpperLimitEXP := playerVital.PlayerProfile.Max_EXP
+			bufferEXP = playerVital.PlayerProfile.Max_EXP
 			for totalEXP > bufferEXP {
 				levelUpperLimitEXP += float64(levelUpperLimit * 50.0)
 				bufferEXP += playerVital.PlayerProfile.Max_EXP + float64(levelUpperLimit*50.0)
@@ -1177,28 +1272,53 @@ func updateProfile_EXP(accountID uuid.UUID, streamed_exp float64, mongoClient *m
 			newLevel := playerVital.PlayerProfile.Level + levelUpperLimit
 			newMaxEXP := levelUpperLimitEXP
 			change := bson.D{
-				{"$set", bson.D{{"PlayerProfile.level", newLevel}, {"PlayerProfile.current_exp", newCurrentEXP}, {"PlayerProfile.max_exp", newMaxEXP}, {"PlayerProfile.total_exp", newTotalExp}}},
+				{"$set", bson.D{{"profile.level", newLevel}, {"profile.current_exp", newCurrentEXP}, {"profile.max_exp", newMaxEXP}, {"profile.total_exp", newTotalExp}}},
 			}
 			_, err := profile.UpdateOne(cxt, match, change)
 			if err != nil {
 				fmt.Println(Failure(err))
-				return "Profile level and EXP update failed!"
+				return 0
 			}
-			return "Profile level and EXP updated successfully!"
+			return newTotalExp
 		} else if totalEXP < playerVital.PlayerProfile.Max_EXP {
 			newCurrentEXP := totalEXP
 			change := bson.D{
-				{"$set", bson.D{{"PlayerProfile.current_exp", newCurrentEXP}}},
+				{"$set", bson.D{{"profile.current_exp", newCurrentEXP}, {"profile.total_exp", newTotalExp}}},
 			}
 			_, err := profile.UpdateOne(cxt, match, change)
 			if err != nil {
 				fmt.Println(Failure(err))
-				return "Profile EXP update failed!"
+				return 0
 			}
-			return "Profile EXP updated successfully!"
+			return newTotalExp
 		}
 	}
-	return "vital entry not found"
+	fmt.Println(Failure("Did not find player profile to update!"))
+	return 0
+}
+func addBits(accountID uuid.UUID, streamed_bits float64, mongoClient *mongo.Client) float64 {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	playerInventory, inventoryFound := getInventory(accountID, mongoClient)
+	newTotalBits := playerInventory.Purse.Bits + streamed_bits
+	if inventoryFound {
+		database := mongoClient.Database("player")
+		inventory := database.Collection("inventory")
+		entryArea := "purse.bits"
+		match := bson.M{"uuid": accountID}
+		change := bson.M{"$set": bson.D{{entryArea, newTotalBits}}}
+		_, err := inventory.UpdateOne(cxt, match, change)
+		if err != nil {
+			fmt.Println(Failure(err))
+			return 0
+		} else {
+			fmt.Println(Success("Updated player bits!"))
+		}
+	}
+	return newTotalBits
 }
 func createSpellIndex(accountID uuid.UUID, mongoClient *mongo.Client) bool {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1629,7 +1749,7 @@ func main() {
 		}
 	}()
 	PORT := ":" + arguments[1]
-
+	sessions.Battles = make(map[uuid.UUID]BattleSession)
 	// add to sync.WaitGroup
 	wg.Add(1)
 	go tcpListener(PORT, cxt, mongoClient)

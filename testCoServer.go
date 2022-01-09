@@ -380,6 +380,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			accountIDSTR, battleIDSTR, rewardMatrixSTR := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			battleID, _ := uuid.Parse(battleIDSTR)
+
 			//find out how much gold and exp is earned from the reward matrix
 			fmt.Println(Info(rewardMatrixSTR))
 			rewardMatrix := getArrayFromString(rewardMatrixSTR)
@@ -404,9 +405,10 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 				sessions.Battles[battleID] = entry
 				updateStatus = "True"
 			}
-			clientResponse += "?" + strconv.FormatFloat(exp, 'f', -1, 64) + "," + strconv.FormatFloat(gold, 'f', -1, 64) + "," + updateStatus
-			fmt.Println(Info(clientResponse))
-			writeResponse(clientResponse, clientConnection)
+			inventory, _ := getInventory(accountID, mongoClient)
+			inventoryJSON, _ := json.Marshal(inventory)
+			battleFinishData := "?" + strconv.FormatFloat(exp, 'f', -1, 64) + "|" + strconv.FormatFloat(gold, 'f', -1, 64) + "|" + updateStatus + "|" + string(inventoryJSON)
+			chainWriteResponse(packetCode, battleFinishData, byteLimiter, clientConnection, "BATTLEFINISH")
 		}
 		if packetCode == "HB#" {
 			// fmt.Println("Heartbeat packet received!")

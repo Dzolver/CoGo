@@ -407,7 +407,9 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			}
 			inventory, _ := getInventory(accountID, mongoClient)
 			inventoryJSON, _ := json.Marshal(inventory)
-			battleFinishData := "?" + strconv.FormatFloat(exp, 'f', -1, 64) + "|" + strconv.FormatFloat(gold, 'f', -1, 64) + "|" + updateStatus + "|" + string(inventoryJSON)
+			vital, _ := getVital(accountID, mongoClient)
+			vitalJSON, _ := json.Marshal(vital)
+			battleFinishData := "?" + strconv.FormatFloat(exp, 'f', -1, 64) + "|" + strconv.FormatFloat(gold, 'f', -1, 64) + "|" + updateStatus + "|" + string(inventoryJSON) + "|" + string(vitalJSON)
 			chainWriteResponse(packetCode, battleFinishData, byteLimiter, clientConnection, "BATTLEFINISH")
 		}
 		if packetCode == "HB#" {
@@ -1265,10 +1267,12 @@ func updateProfile_EXP(accountID uuid.UUID, streamed_exp float64, mongoClient *m
 			levelUpperLimit := 0
 			levelUpperLimitEXP := playerVital.PlayerProfile.Max_EXP
 			bufferEXP = playerVital.PlayerProfile.Max_EXP
-			for totalEXP > bufferEXP {
-				levelUpperLimitEXP += float64(levelUpperLimit * 50.0)
-				bufferEXP += playerVital.PlayerProfile.Max_EXP + float64(levelUpperLimit*50.0)
-				levelUpperLimit++
+			if totalEXP > bufferEXP {
+				for totalEXP > bufferEXP {
+					levelUpperLimit++
+					levelUpperLimitEXP += 50.0
+					bufferEXP += playerVital.PlayerProfile.Max_EXP + float64(levelUpperLimit*50.0)
+				}
 			}
 			newCurrentEXP := levelUpperLimitEXP - (bufferEXP - totalEXP)
 			newLevel := playerVital.PlayerProfile.Level + levelUpperLimit

@@ -93,6 +93,10 @@ type Stats struct {
 type ItemRange struct {
 	Collection []Item `json:"collection" bson:"collection"`
 }
+type ShopItem struct {
+	Item  Item    `json:"shop_item" bson:"shop_item"`
+	Price float64 `json:"price" bson:"price"`
+}
 type Equipment struct {
 	Head      ItemRange `json:"head" bson:"Head, omitempty"`
 	Body      ItemRange `json:"body" bson:"Body, omitempty"`
@@ -216,6 +220,12 @@ type Resident struct {
 	NpcID    string             `json:"npc_id" default:"" bson:"npcID, omitempty"`
 	NpcName  string             `json:"npc_name" default:"" bson:"npcName, omitempty"`
 	Dialogue []string           `json:"dialogue" default:"" bson:"dialogue, omitempty"`
+}
+type ShopKeeper struct {
+	ObjectID  primitive.ObjectID `json:"objectID" bson:"_id,omitempty"`
+	NpcID     string             `json:"npc_id" default:"" bson:"npcID,omitempty"`
+	Catalogue []ShopItem         `json:"catalogue" default:"" bson:"catalogue,omitempty"`
+	Purse     Purse              `json:"purse" default:"" bson:"purse,omitempty"`
 }
 type Monster struct {
 	ObjectID       primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
@@ -991,6 +1001,78 @@ func validateUser(player *User, mongoClient *mongo.Client) bool {
 	}
 	return true
 }
+func createShopKeeper(npcID string, mongoClient *mongo.Client) {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("world")
+	shopkeepers := database.Collection("shopkeepers")
+	var freshShopKeeper ShopKeeper
+	freshShopKeeper.ObjectID = primitive.NewObjectID()
+	freshShopKeeper.NpcID = npcID
+	freshShopKeeper.Catalogue = make([]ShopItem, 0)
+	var freshPurse Purse
+	freshPurse.Bits = 0
+	freshShopKeeper.Purse = freshPurse
+	createResult, err := shopkeepers.InsertOne(cxt, freshShopKeeper)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(Success("New shopkeeper added to db : ", createResult.InsertedID))
+}
+func addCatalogueItem(itemID string, npcID string, price float64, mongoClient *mongo.Client) {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	catalogueItem, foundItem := getItem(itemID, mongoClient)
+	if foundItem {
+		var freshShopItem ShopItem
+		freshShopItem.Item = *catalogueItem
+		freshShopItem.Price = price
+		database := mongoClient.Database("world")
+		shopkeepers := database.Collection("shopkeepers")
+		entryArea := "catalogue"
+		match := bson.M{"npcID": npcID}
+		change := bson.M{"$push": bson.M{entryArea: freshShopItem}}
+		updateResponse, err := shopkeepers.UpdateOne(cxt, match, change)
+		fmt.Println(Info(updateResponse))
+		if err != nil {
+			fmt.Println(Failure(err))
+		} else {
+			fmt.Println(Success("Item added successfully!"))
+		}
+	}
+}
+func getShopKeeper(npcID string, mongoClient *mongo.Client) (*ShopKeeper, bool) {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("world")
+	shopkeepers := database.Collection("shopkeepers")
+	filterCursor, err := shopkeepers.Find(cxt, bson.M{"npcID": npcID})
+	if err != nil {
+		fmt.Println(Failure(err))
+		panic(err)
+	}
+	var itemResult []ShopKeeper
+	if err = filterCursor.All(cxt, &itemResult); err != nil {
+		log.Fatal(err)
+	}
+	if len(itemResult) == 0 {
+		fmt.Println(Warn("Shopkeeper not found!"))
+		emptyItem := new(ShopKeeper)
+		return emptyItem, false
+	}
+	fmt.Println(Info("Shopkeeper retrieved : ", itemResult[0].NpcID))
+	retrievedShopKeeper := itemResult[0]
+	return &retrievedShopKeeper, true
+}
 func getRegion(regionID string, mongoClient *mongo.Client) *Region {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -1452,7 +1534,9 @@ func createInventory(accountID uuid.UUID, mongoClient *mongo.Client) bool {
 	var freshInventory PlayerInventory
 	freshInventory.ObjectID = primitive.NewObjectID()
 	freshInventory.Account_id = accountID
-
+	var freshPurse Purse
+	freshPurse.Bits = 0
+	freshInventory.Purse = freshPurse
 	freshInventory.Equipment.Head.Collection = make([]Item, 0)
 	freshInventory.Equipment.Body.Collection = make([]Item, 0)
 	freshInventory.Equipment.Feet.Collection = make([]Item, 0)
@@ -1746,6 +1830,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	//createShopKeeper("NPC1", mongoClient)
+	//addCatalogueItem("WizardHat", "NPC1", 7, mongoClient)
+
 	// addInventoryItem("asd", "WizardHat", mongoClient)
 	// addInventoryItem("asd", "WizardHat", mongoClient)
 	//disconnect mongoDB client on return

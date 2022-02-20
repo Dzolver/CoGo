@@ -94,8 +94,9 @@ type ItemRange struct {
 	Collection []Item `json:"collection" bson:"collection"`
 }
 type ShopItem struct {
-	Item  Item    `json:"shop_item" bson:"shop_item"`
-	Price float64 `json:"price" bson:"price"`
+	Item_uuid uuid.UUID `json:"uuid" bson:"uuid,omitempty"`
+	Item      Item      `json:"shop_item" bson:"shop_item"`
+	Price     float64   `json:"price" bson:"price"`
 }
 type Equipment struct {
 	Head      ItemRange `json:"head" bson:"Head, omitempty"`
@@ -310,6 +311,7 @@ var portNumbers = make(map[string]int)
 var portNumbersReversed = make(map[string]string)
 var portIndex = 1
 var mapInstance Map
+var ALLshopkeepers = make(map[string]ShopKeeper)
 var sessions Sessions
 var (
 	Info           = Teal
@@ -616,7 +618,16 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			regionData := "?" + string(regionDataJSON)
 			chainWriteResponse(packetCode, regionData, byteLimiter, clientConnection, "REGION")
 		}
-
+		if packetCode == "SH#" {
+			fmt.Println(IncomingPacket("Shopkeeper Request Packet received"))
+			npcID := processTier1Packet(packetMessage)
+			if entry, found := ALLshopkeepers[npcID]; found {
+				shopkeeper := entry
+				shopkeeperJSON, _ := json.Marshal(shopkeeper)
+				shopkeeperData := "?" + string(shopkeeperJSON)
+				chainWriteResponse(packetCode, shopkeeperData, byteLimiter, clientConnection, "SHOPKEEPER")
+			}
+		}
 		if packetCode == "SR#" {
 			fmt.Println(IncomingPacket("Read Spell Index packet received!"))
 			accountIDSTR := processTier1Packet(packetMessage)
@@ -1022,6 +1033,23 @@ func createShopKeeper(npcID string, mongoClient *mongo.Client) {
 	}
 	fmt.Println(Success("New shopkeeper added to db : ", createResult.InsertedID))
 }
+func getShopKeepersForServer(mongoClient *mongo.Client) {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("world")
+	shopkeepers := database.Collection("shopkeepers")
+	filterCursor, err := shopkeepers.Find(cxt, bson.D{})
+	var itemResult []ShopKeeper
+	if err = filterCursor.All(cxt, &itemResult); err != nil {
+		log.Fatal(err)
+	}
+	for _, shopkeeper := range itemResult {
+		ALLshopkeepers[shopkeeper.NpcID] = shopkeeper
+	}
+}
 func addCatalogueItem(itemID string, npcID string, price float64, mongoClient *mongo.Client) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -1031,6 +1059,7 @@ func addCatalogueItem(itemID string, npcID string, price float64, mongoClient *m
 	catalogueItem, foundItem := getItem(itemID, mongoClient)
 	if foundItem {
 		var freshShopItem ShopItem
+		freshShopItem.Item_uuid = uuid.New()
 		freshShopItem.Item = *catalogueItem
 		freshShopItem.Price = price
 		database := mongoClient.Database("world")
@@ -1046,32 +1075,6 @@ func addCatalogueItem(itemID string, npcID string, price float64, mongoClient *m
 			fmt.Println(Success("Item added successfully!"))
 		}
 	}
-}
-func getShopKeeper(npcID string, mongoClient *mongo.Client) (*ShopKeeper, bool) {
-	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
-		panic(err)
-	}
-	database := mongoClient.Database("world")
-	shopkeepers := database.Collection("shopkeepers")
-	filterCursor, err := shopkeepers.Find(cxt, bson.M{"npcID": npcID})
-	if err != nil {
-		fmt.Println(Failure(err))
-		panic(err)
-	}
-	var itemResult []ShopKeeper
-	if err = filterCursor.All(cxt, &itemResult); err != nil {
-		log.Fatal(err)
-	}
-	if len(itemResult) == 0 {
-		fmt.Println(Warn("Shopkeeper not found!"))
-		emptyItem := new(ShopKeeper)
-		return emptyItem, false
-	}
-	fmt.Println(Info("Shopkeeper retrieved : ", itemResult[0].NpcID))
-	retrievedShopKeeper := itemResult[0]
-	return &retrievedShopKeeper, true
 }
 func getRegion(regionID string, mongoClient *mongo.Client) *Region {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1832,9 +1835,12 @@ func main() {
 	}
 	//createShopKeeper("NPC1", mongoClient)
 	//addCatalogueItem("WizardHat", "NPC1", 7, mongoClient)
+	//createShopKeeper("NPC0", mongoClient)
+	//addCatalogueItem("WizardRobe", "NPC0", 23, mongoClient)
 
 	// addInventoryItem("asd", "WizardHat", mongoClient)
 	// addInventoryItem("asd", "WizardHat", mongoClient)
+	getShopKeepersForServer(mongoClient)
 	//disconnect mongoDB client on return
 	defer func() {
 		if err = mongoClient.Disconnect(cxt); err != nil {

@@ -53,7 +53,7 @@ type PlayerLoadout struct {
 }
 
 type Purse struct {
-	Bits float64 `default:"0" json:"bits" bson:"bits, omitempty"`
+	Bits float64 `json:"bits" default:"0" bson:"bits, omitempty"`
 }
 type Item struct {
 	ObjectID     primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
@@ -65,6 +65,7 @@ type Item struct {
 	Num          int32              `json:"num" default:"" bson:"num, omitempty"`
 	Description  string             `json:"description" default:"" bson:"description, omitempty"`
 	Stats        Stats              `json:"stats" bson:"stats, omitempty"`
+	BaseValue    float64            `json:"base_value" bson:"base_value,omitempty"`
 }
 type Stats struct {
 	Health       float64 `json:"health" default:"0" bson:"health"`
@@ -302,6 +303,16 @@ type Reward struct {
 	Exp      float64 `json:"exp" default:"0" bson:"exp"`
 	TotalExp float64 `json:"total_exp" default:"0" bson:"total_exp"`
 }
+type Packet struct {
+	PacketID    uuid.UUID `json:"packet_id" default:""`
+	PacketCode  string    `json:"packet_code" default:""`
+	Chain       bool      `json:"chain" default:""`
+	ServiceType string    `json:"service_type" default:""`
+	Content     string    `json:"content" default:""`
+}
+type PlayerPacketCache struct {
+	PacketCache map[uuid.UUID]Packet `json:"packet_cache" default:""`
+}
 
 var count = 0
 var PACKET_SIZE = 10240
@@ -312,6 +323,7 @@ var portNumbersReversed = make(map[string]string)
 var portIndex = 1
 var mapInstance Map
 var ALLshopkeepers = make(map[string]ShopKeeper)
+var playerPacketCache = make(map[uuid.UUID]PlayerPacketCache)
 var sessions Sessions
 var (
 	Info           = Teal
@@ -355,7 +367,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		if packetCode == "BR#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Read for Battle packet received!"))
-			accountIDSTR, levelID := processTier2Packet(packetMessage)
+			requestID, accountIDSTR, levelID := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			var freshBattlePacket BattlePacket
 			vital, _ := getVital(accountID, mongoClient)
@@ -377,7 +389,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 
 			battlePacketJSON, _ := json.Marshal(freshBattlePacket)
 			battlePlayerData := "?" + string(battlePacketJSON)
-			chainWriteResponse(packetCode, battlePlayerData, byteLimiter, clientConnection, "BATTLE")
+			chainWriteResponse(accountID, requestID, packetCode, battlePlayerData, byteLimiter, clientConnection, "BATTLE", false)
 		}
 		if packetCode == "B0#" {
 			fmt.Println(IncomingPacket("Battle State Confirmation packet received!"))
@@ -389,7 +401,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			fmt.Println(IncomingPacket("Battle Finish packet received!"))
 			fmt.Println(Info(packetMessage))
 			//e.g: battleID?BF#1,1,1 -> battleID, [1,1,1]
-			accountIDSTR, battleIDSTR, rewardMatrixSTR := processTier3Packet(packetMessage)
+			requestID, accountIDSTR, battleIDSTR, rewardMatrixSTR := processTier4Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			battleID, _ := uuid.Parse(battleIDSTR)
 
@@ -412,7 +424,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 				exp = entry.Reward.Exp
 				gold = entry.Reward.Gold
 				//calculate exp and return total exp to entry.Reward.Totalexp
-				addBits(accountID, gold, mongoClient)
+				addBits(accountID, gold, true, mongoClient)
 				entry.Reward.TotalExp = updateProfile_EXP(accountID, entry.Reward.Exp, mongoClient)
 				sessions.Battles[battleID] = entry
 				updateStatus = "True"
@@ -422,7 +434,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			vital, _ := getVital(accountID, mongoClient)
 			vitalJSON, _ := json.Marshal(vital)
 			battleFinishData := "?" + strconv.FormatFloat(exp, 'f', -1, 64) + "|" + strconv.FormatFloat(gold, 'f', -1, 64) + "|" + updateStatus + "|" + string(inventoryJSON) + "|" + string(vitalJSON)
-			chainWriteResponse(packetCode, battleFinishData, byteLimiter, clientConnection, "BATTLEFINISH")
+			chainWriteResponse(accountID, requestID, packetCode, battleFinishData, byteLimiter, clientConnection, "BATTLEFINISH", false)
 		}
 		if packetCode == "HB#" {
 			// fmt.Println("Heartbeat packet received!")
@@ -438,10 +450,10 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		if packetCode == "IA#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Add Inventory packet received!"))
-			accountIDSTR, itemID := processTier2Packet(packetMessage)
+			requestID, accountIDSTR, itemID := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			clientResponse += addInventoryItem(accountID, itemID, mongoClient)
-			writeResponse(clientResponse, clientConnection)
+			writeResponse(accountID, requestID, clientResponse, clientConnection, false)
 		}
 		if packetCode == "ID#" {
 			clientResponse = packetCode
@@ -449,28 +461,28 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		}
 		if packetCode == "IR#" {
 			fmt.Println(IncomingPacket("Read Inventory packet received!"))
-			accountIDSTR := processTier1Packet(packetMessage)
+			requestID, accountIDSTR := processTier2Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			inventory, _ := getInventory(accountID, mongoClient)
 			inventoryJSON, _ := json.Marshal(inventory)
 			inventoryData := "?" + string(inventoryJSON)
-			chainWriteResponse(packetCode, inventoryData, byteLimiter, clientConnection, "INVENTORY")
+			chainWriteResponse(accountID, requestID, packetCode, inventoryData, byteLimiter, clientConnection, "INVENTORY", false)
 		}
 		//Inventory update
 		if packetCode == "IU#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Update Inventory packet received!"))
-			accountIDSTR, itemID := processTier2Packet(packetMessage)
+			requestID, accountIDSTR, itemID := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			clientResponse += "?" + addInventoryItem(accountID, itemID, mongoClient)
-			writeResponse(clientResponse, clientConnection)
+			writeResponse(accountID, requestID, clientResponse, clientConnection, false)
 		}
 		//Login
 		if packetCode == "L0#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Login packet received!"))
 			fmt.Println(Info(packetMessage))
-			username, password := processTier2Packet(packetMessage)
+			requestID, username, password := processTier3Packet(packetMessage)
 			loginResponse, valid := handleLogin(username, password, mongoClient)
 			if valid {
 				//Login success
@@ -504,13 +516,14 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 				freshlspJSON, _ := json.Marshal(freshlsp)
 				lspData := "?" + string(freshlspJSON)
 				loginResponse = string(freshlspJSON)
-				chainWriteResponse("LS#", lspData, byteLimiter, clientConnection, "LOGIN SECRET PACKET")
+				chainWriteResponse(User.Account_id, requestID, "LS#", lspData, byteLimiter, clientConnection, "LOGIN SECRET PACKET", false)
 			} else if !valid {
 				//Login fail
 				clientResponse = "LF#"
 				clientResponse += "?" + loginResponse
 				fmt.Println(Info(clientResponse))
-				writeResponse(clientResponse, clientConnection)
+				fakeID := uuid.New()
+				writeResponse(fakeID, requestID, clientResponse, clientConnection, true)
 			}
 			//get a good port number for the udplistener and for the client to connect to
 			//wg.Add(1)
@@ -521,16 +534,17 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		if packetCode == "LE#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Equip to loadout"))
-			accountIDSTR, itemID := processTier2Packet(packetMessage)
+			requestID, accountIDSTR, itemID := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			equipFeedback := equipItem(accountID, itemID, mongoClient)
 			clientResponse += equipFeedback
-			writeResponse(clientResponse, clientConnection)
+			writeResponse(accountID, requestID, clientResponse, clientConnection, false)
 		}
 		if packetCode == "LL#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Level packet received!"))
-			levelID := processTier1Packet(packetMessage)
+			accountIDSTR, requestID, levelID := processTier3Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
 			var freshLevel LevelData
 			level := getLevel(levelID, mongoClient)
 			NPC := getNPCs(level.Residents, mongoClient)
@@ -538,51 +552,66 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			freshLevel.Residents = NPC
 			levelDataJSON, _ := json.Marshal(freshLevel)
 			levelData := "?" + string(levelDataJSON)
-			chainWriteResponse(packetCode, levelData, byteLimiter, clientConnection, "LEVEL")
+			chainWriteResponse(accountID, requestID, packetCode, levelData, byteLimiter, clientConnection, "LEVEL", false)
 		}
 		if packetCode == "LR#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Read loadout packet received!"))
-			accountIDSTR := processTier1Packet(packetMessage)
+			requestID, accountIDSTR := processTier2Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			loadout, _ := getLoadout(accountID, mongoClient)
 			loadoutJSON, _ := json.Marshal(loadout)
 			loadoutData := "?" + string(loadoutJSON)
-			chainWriteResponse(packetCode, loadoutData, byteLimiter, clientConnection, "LOADOUT")
+			chainWriteResponse(accountID, requestID, packetCode, loadoutData, byteLimiter, clientConnection, "LOADOUT", false)
 		}
 		if packetCode == "LU#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Update EXP packet received!"))
-			accountIDSTR, streamedEXPString := processTier2Packet(packetMessage)
+			requestID, accountIDSTR, streamedEXPString := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			streamedEXP, _ := strconv.ParseFloat(streamedEXPString, 64)
 			newTotalEXP := updateProfile_EXP(accountID, streamedEXP, mongoClient)
 			newTotalEXPSTR := strconv.FormatFloat(newTotalEXP, 'E', -1, 64)
 			clientResponse += "?" + newTotalEXPSTR
-			writeResponse(clientResponse, clientConnection)
+			writeResponse(accountID, requestID, clientResponse, clientConnection, false)
 		}
 		if packetCode == "LUE#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Unequip from loadout"))
-			accountIDSTR, itemID := processTier2Packet(packetMessage)
+			requestID, accountIDSTR, itemID := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			unequipFeedback := unequipItem(accountID, itemID, mongoClient)
 			clientResponse += unequipFeedback
-			writeResponse(clientResponse, clientConnection)
+			writeResponse(accountID, requestID, clientResponse, clientConnection, false)
 		}
 		if packetCode == "ML#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Map load packet received"))
+			accountIDSTR, requestID := processTier2Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
 			mapJSON, _ := json.Marshal(mapInstance.ConnectedClients)
 			mapData := "?" + string(mapJSON)
-			chainWriteResponse(packetCode, mapData, byteLimiter, clientConnection, "MAP")
+			chainWriteResponse(accountID, requestID, packetCode, mapData, byteLimiter, clientConnection, "MAP", false)
+		}
+		if packetCode == "OK#" {
+			fmt.Println(IncomingPacket("OK Packet received!"))
+			accountIDSTR, requestIDSTR := processTier2Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
+			requestID, _ := uuid.Parse(requestIDSTR)
+			_, found := playerPacketCache[accountID].PacketCache[requestID]
+			if found {
+				delete(playerPacketCache[accountID].PacketCache, requestID)
+				if len(playerPacketCache[accountID].PacketCache) == 0 {
+					delete(playerPacketCache, accountID)
+				}
+			}
 		}
 		//Register
 		if packetCode == "R0#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Register packet received!"))
 			fmt.Println(Info(packetMessage))
-			username, password := processTier2Packet(packetMessage)
+			requestID, username, password := processTier3Packet(packetMessage)
 			registerResponse, valid, accountID := handleRegistration(username, password, mongoClient)
 			if valid {
 				//Register success
@@ -598,13 +627,14 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 				clientResponse = "RF#"
 			}
 			clientResponse += "?" + registerResponse
-			writeResponse(clientResponse, clientConnection)
+			writeResponse(accountID, requestID, clientResponse, clientConnection, true)
 		}
 		if packetCode == "RLL#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Region and Level packet received!"))
 			fmt.Println(Info(packetMessage))
-			regionID, levelID := processTier2Packet(packetMessage)
+			requestID, accountIDSTR, regionID, levelID := processTier4Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
 			var freshRegionData RegionData
 			var freshLevelData LevelData
 			region := getRegion(regionID, mongoClient)
@@ -616,44 +646,61 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			freshRegionData.LevelData = &freshLevelData
 			regionDataJSON, _ := json.Marshal(freshRegionData)
 			regionData := "?" + string(regionDataJSON)
-			chainWriteResponse(packetCode, regionData, byteLimiter, clientConnection, "REGION")
+			chainWriteResponse(accountID, requestID, packetCode, regionData, byteLimiter, clientConnection, "REGION", false)
 		}
 		if packetCode == "SH#" {
 			fmt.Println(IncomingPacket("Shopkeeper Request Packet received"))
-			npcID := processTier1Packet(packetMessage)
+			requestID, accountIDSTR, npcID := processTier3Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
 			if entry, found := ALLshopkeepers[npcID]; found {
 				shopkeeper := entry
 				shopkeeperJSON, _ := json.Marshal(shopkeeper)
 				shopkeeperData := "?" + string(shopkeeperJSON)
-				chainWriteResponse(packetCode, shopkeeperData, byteLimiter, clientConnection, "SHOPKEEPER")
+				chainWriteResponse(accountID, requestID, packetCode, shopkeeperData, byteLimiter, clientConnection, "SHOPKEEPER", false)
 			}
 		}
 		if packetCode == "SR#" {
 			fmt.Println(IncomingPacket("Read Spell Index packet received!"))
-			accountIDSTR := processTier1Packet(packetMessage)
+			requestID, accountIDSTR := processTier2Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			spellIndex, _ := getSpellIndex(accountID, mongoClient)
 			spellIndexJSON, _ := json.Marshal(spellIndex)
 			spellIndexData := "?" + string(spellIndexJSON)
-			chainWriteResponse(packetCode, spellIndexData, byteLimiter, clientConnection, "SPELLINDEX")
+			chainWriteResponse(accountID, requestID, packetCode, spellIndexData, byteLimiter, clientConnection, "SPELLINDEX", false)
+		}
+		if packetCode == "SOS#" {
+			fmt.Println(IncomingPacket("SOS Packet received!"))
+			accountIDSTR, requestIDSTR := processTier2Packet(packetMessage)
+			accountID, _ := uuid.Parse(accountIDSTR)
+			requestID, _ := uuid.Parse(requestIDSTR)
+			SOSPacket, found := playerPacketCache[accountID].PacketCache[requestID]
+			if found {
+				if SOSPacket.Chain {
+					chainWriteResponse(accountID, requestIDSTR, SOSPacket.PacketCode, SOSPacket.Content, byteLimiter, clientConnection, SOSPacket.ServiceType, true)
+				} else if !SOSPacket.Chain {
+					writeResponse(accountID, requestIDSTR, SOSPacket.Content, clientConnection, true)
+				}
+			} else {
+				fmt.Println(Warn("SOS Packet ID : " + requestIDSTR + " is NOT Found!"))
+			}
 		}
 		if packetCode == "SU#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Update Spell Index packet received!"))
-			accountIDSTR, spellID := processTier2Packet(packetMessage)
+			requestID, accountIDSTR, spellID := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			clientResponse += "?" + addSpell(accountID, spellID, mongoClient)
-			writeResponse(clientResponse, clientConnection)
+			writeResponse(accountID, requestID, clientResponse, clientConnection, false)
 		}
 		if packetCode == "VR#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Load vital packet received!"))
-			accountIDSTR := processTier1Packet(packetMessage)
+			requestID, accountIDSTR := processTier2Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			vital, _ := getVital(accountID, mongoClient)
 			vitalJSON, _ := json.Marshal(vital)
 			vitalData := "?" + string(vitalJSON)
-			chainWriteResponse(packetCode, vitalData, byteLimiter, clientConnection, "PROFILE")
+			chainWriteResponse(accountID, requestID, packetCode, vitalData, byteLimiter, clientConnection, "PROFILE", false)
 		}
 		if packetMessage == "STOP" {
 			fmt.Println("Client connection has exited")
@@ -662,6 +709,16 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		}
 	}
 	clientConnection.Close()
+}
+func addPacketToCache(accountID uuid.UUID, requestID string, content string, chain bool, serviceType string, packetCode string) {
+	var packet Packet
+	packetID, _ := uuid.Parse(requestID)
+	packet.PacketID = packetID
+	packet.Chain = chain
+	packet.PacketCode = packetCode
+	packet.ServiceType = serviceType
+	packet.Content = content
+	playerPacketCache[accountID].PacketCache[packetID] = packet
 }
 func packetDissect(netData string) (string, string) {
 	data := strings.TrimSpace(string(netData))
@@ -692,6 +749,14 @@ func processTier4Packet(packetMessage string) (string, string, string, string) {
 	item4 := strings.Split(packetMessage, "?")[3]
 	return item1, item2, item3, item4
 }
+func processTier5Packet(packetMessage string) (string, string, string, string, string) {
+	item1 := strings.Split(packetMessage, "?")[0]
+	item2 := strings.Split(packetMessage, "?")[1]
+	item3 := strings.Split(packetMessage, "?")[2]
+	item4 := strings.Split(packetMessage, "?")[3]
+	item5 := strings.Split(packetMessage, "?")[4]
+	return item1, item2, item3, item4, item5
+}
 func getArrayFromString(packetMessage string) []int {
 	var itemArray []int
 	arrayWithoutBrackets := strings.Split(strings.Split(packetMessage, "[")[1], "]")[0]
@@ -707,10 +772,16 @@ func getArrayFromString(packetMessage string) []int {
 	}
 	return itemArray
 }
-func writeResponse(clientResponse string, clientConnection net.Conn) {
+func writeResponse(accountID uuid.UUID, requestID string, clientResponse string, clientConnection net.Conn, resend bool) {
+	if !resend {
+		addPacketToCache(accountID, requestID, clientResponse, false, "", "")
+	}
 	clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
 }
-func chainWriteResponse(packetCode string, totalData string, byteLimiter int, clientConnection net.Conn, serviceType string) {
+func chainWriteResponse(accountID uuid.UUID, requestID string, packetCode string, totalData string, byteLimiter int, clientConnection net.Conn, serviceType string, resend bool) {
+	if !resend {
+		addPacketToCache(accountID, requestID, totalData, true, serviceType, packetCode)
+	}
 	base := strings.Replace(packetCode, "#", "", -1)
 	totalByteData := []byte(strings.Trim(strconv.QuoteToASCII(totalData), "\""))
 	dataPartitions := len(totalByteData) / byteLimiter
@@ -1387,14 +1458,19 @@ func updateProfile_EXP(accountID uuid.UUID, streamed_exp float64, mongoClient *m
 	fmt.Println(Failure("Did not find player profile to update!"))
 	return 0
 }
-func addBits(accountID uuid.UUID, streamed_bits float64, mongoClient *mongo.Client) float64 {
+func addBits(accountID uuid.UUID, streamed_bits float64, add bool, mongoClient *mongo.Client) float64 {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
 		panic(err)
 	}
 	playerInventory, inventoryFound := getInventory(accountID, mongoClient)
-	newTotalBits := playerInventory.Purse.Bits + streamed_bits
+	newTotalBits := 0.0
+	if add {
+		newTotalBits = playerInventory.Purse.Bits + streamed_bits
+	} else {
+		newTotalBits = streamed_bits
+	}
 	if inventoryFound {
 		database := mongoClient.Database("player")
 		inventory := database.Collection("inventory")
@@ -1410,6 +1486,15 @@ func addBits(accountID uuid.UUID, streamed_bits float64, mongoClient *mongo.Clie
 		}
 	}
 	return newTotalBits
+}
+func getBits(accountID uuid.UUID, mongoClient *mongo.Client) float64 {
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	playerInventory, _ := getInventory(accountID, mongoClient)
+	return playerInventory.Purse.Bits
 }
 func createSpellIndex(accountID uuid.UUID, mongoClient *mongo.Client) bool {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1727,6 +1812,70 @@ func addInventoryItem(accountID uuid.UUID, itemID string, mongoClient *mongo.Cli
 	}
 	return "Item does not exist!"
 }
+func performTrade(accountID uuid.UUID, npcID string, playerBasket []Item, shopBasket []uuid.UUID, totalPlayerValue float64, totalShopValue float64, mongoClient *mongo.Client) bool {
+	//access player purse
+	//write func getBits()
+	//access shopkeeper purse
+	shopkeeper := ALLshopkeepers[npcID]
+	shopkeeperBits := shopkeeper.Purse.Bits
+	playerBits := getBits(accountID, mongoClient)
+	//calculate total value of baskets
+	pBasketValue := 0.0
+	sBasketValue := 0.0
+	for _, item := range playerBasket {
+		//
+		pBasketValue += item.BaseValue
+	}
+	for _, uuid := range shopBasket {
+		for _, item := range ALLshopkeepers[npcID].Catalogue {
+			if item.Item_uuid == uuid {
+				sBasketValue += item.Price
+			}
+		}
+	}
+	pTradePower := pBasketValue + playerBits
+	sTradePower := sBasketValue + shopkeeperBits
+	if sTradePower > pTradePower && sTradePower >= sBasketValue {
+		//buy player items first and then sell to player
+		//if shop can afford player basket
+		if sTradePower >= pBasketValue && pBasketValue > 0 {
+			shopkeeperBits -= pBasketValue
+			playerBits += pBasketValue
+			pBasketValue = 0
+			shopkeeperBits += sBasketValue
+			playerBits -= sBasketValue
+			sBasketValue = 0
+			//update shopkeepers and player
+			shopkeeper.Purse.Bits = shopkeeperBits
+			ALLshopkeepers[npcID] = shopkeeper
+			//create setBits function or modify addBits() with extra param
+			addBits(accountID, playerBits, false, mongoClient)
+			return true
+		} else {
+			return false
+		}
+	} else if pTradePower > sTradePower && pTradePower >= pBasketValue {
+		//buy shopkeeper items first and then sell to shopkeeper
+		//if player can afford shopkeeper basket
+		if pTradePower >= sBasketValue && sBasketValue > 0 {
+			shopkeeperBits += sBasketValue
+			playerBits -= sBasketValue
+			sBasketValue = 0
+			shopkeeperBits -= pBasketValue
+			playerBits += pBasketValue
+			pBasketValue = 0
+			//update shopkeepers and player
+			shopkeeper.Purse.Bits = shopkeeperBits
+			ALLshopkeepers[npcID] = shopkeeper
+			//create setBits function or modify addBits() with extra param
+			addBits(accountID, playerBits, false, mongoClient)
+			return true
+		} else {
+			return false
+		}
+	}
+	return false
+}
 func removeInventoryItem(accountID uuid.UUID, itemID string, mongoClient *mongo.Client) string {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -1752,6 +1901,7 @@ func removeInventoryItem(accountID uuid.UUID, itemID string, mongoClient *mongo.
 	}
 	return "Item does not exist!"
 }
+
 func updateStatsByItem(originalStats *Stats, item *Item, operation string) *Stats {
 	op := 0.0
 	if operation == "add" {
@@ -1821,6 +1971,8 @@ func main() {
 	if len(arguments) == 1 {
 		fmt.Println(Warn("Please provide port"))
 		return
+	} else {
+		fmt.Println(Success("SERVER RUNNING on Port " + arguments[1] + " !"))
 	}
 	//mongoDB specs
 	uri := "mongodb+srv://admin:london1234@cluster0.8acnf.mongodb.net/myFirstDatabase?retryWrites=true&w=majority"

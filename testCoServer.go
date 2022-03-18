@@ -367,7 +367,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		if packetCode == "BR#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Read for Battle packet received!"))
-			requestID, accountIDSTR, levelID := processTier3Packet(packetMessage)
+			requestIDSTR, accountIDSTR, levelID := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			var freshBattlePacket BattlePacket
 			vital, _ := getVital(accountID, mongoClient)
@@ -387,9 +387,9 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			freshBattlePacket.Loadout = loadout
 			freshBattlePacket.Monsters = monsters
 
-			battlePacketJSON, _ := json.Marshal(freshBattlePacket)
-			battlePlayerData := "?" + string(battlePacketJSON)
-			chainWriteResponse(accountID, requestID, packetCode, battlePlayerData, byteLimiter, clientConnection, "BATTLE", false)
+			contentJSON, _ := json.Marshal(freshBattlePacket)
+			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "BATTLE", contentJSON)
+			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 		}
 		if packetCode == "B0#" {
 			fmt.Println(IncomingPacket("Battle State Confirmation packet received!"))
@@ -401,7 +401,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			fmt.Println(IncomingPacket("Battle Finish packet received!"))
 			fmt.Println(Info(packetMessage))
 			//e.g: battleID?BF#1,1,1 -> battleID, [1,1,1]
-			requestID, accountIDSTR, battleIDSTR, rewardMatrixSTR := processTier4Packet(packetMessage)
+			requestIDSTR, accountIDSTR, battleIDSTR, rewardMatrixSTR := processTier4Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			battleID, _ := uuid.Parse(battleIDSTR)
 
@@ -433,8 +433,9 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			inventoryJSON, _ := json.Marshal(inventory)
 			vital, _ := getVital(accountID, mongoClient)
 			vitalJSON, _ := json.Marshal(vital)
-			battleFinishData := "?" + strconv.FormatFloat(exp, 'f', -1, 64) + "|" + strconv.FormatFloat(gold, 'f', -1, 64) + "|" + updateStatus + "|" + string(inventoryJSON) + "|" + string(vitalJSON)
-			chainWriteResponse(accountID, requestID, packetCode, battleFinishData, byteLimiter, clientConnection, "BATTLEFINISH", false)
+			contentJSON := strconv.FormatFloat(exp, 'f', -1, 64) + "|" + strconv.FormatFloat(gold, 'f', -1, 64) + "|" + updateStatus + "|" + string(inventoryJSON) + "|" + string(vitalJSON)
+			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "BATTLEFINISH", []byte(contentJSON))
+			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 		}
 		if packetCode == "HB#" {
 			// fmt.Println("Heartbeat packet received!")
@@ -450,10 +451,11 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		if packetCode == "IA#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Add Inventory packet received!"))
-			requestID, accountIDSTR, itemID := processTier3Packet(packetMessage)
+			requestIDSTR, accountIDSTR, itemID := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
-			clientResponse += addInventoryItem(accountID, itemID, mongoClient)
-			writeResponse(accountID, requestID, clientResponse, clientConnection, false)
+			content := addInventoryItem(accountID, itemID, mongoClient)
+			packet := createSimpleDeliveryPacket(requestIDSTR, packetCode, "INVENTORY", content)
+			writeResponse(accountID, requestIDSTR, packet, clientConnection, false)
 		}
 		if packetCode == "ID#" {
 			clientResponse = packetCode
@@ -461,32 +463,33 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		}
 		if packetCode == "IR#" {
 			fmt.Println(IncomingPacket("Read Inventory packet received!"))
-			requestID, accountIDSTR := processTier2Packet(packetMessage)
+			requestIDSTR, accountIDSTR := processTier2Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			inventory, _ := getInventory(accountID, mongoClient)
 			inventoryJSON, _ := json.Marshal(inventory)
-			inventoryData := "?" + string(inventoryJSON)
-			chainWriteResponse(accountID, requestID, packetCode, inventoryData, byteLimiter, clientConnection, "INVENTORY", false)
+			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "INVENTORY", inventoryJSON)
+			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 		}
 		//Inventory update
 		if packetCode == "IU#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Update Inventory packet received!"))
-			requestID, accountIDSTR, itemID := processTier3Packet(packetMessage)
+			requestIDSTR, accountIDSTR, itemID := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
-			clientResponse += "?" + addInventoryItem(accountID, itemID, mongoClient)
-			writeResponse(accountID, requestID, clientResponse, clientConnection, false)
+			content := addInventoryItem(accountID, itemID, mongoClient)
+			packet := createSimpleDeliveryPacket(requestIDSTR, packetCode, "INVENTORY", content)
+			writeResponse(accountID, requestIDSTR, packet, clientConnection, false)
 		}
 		//Login
 		if packetCode == "L0#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Login packet received!"))
 			fmt.Println(Info(packetMessage))
-			requestID, username, password := processTier3Packet(packetMessage)
+			requestIDSTR, username, password := processTier3Packet(packetMessage)
 			loginResponse, valid := handleLogin(username, password, mongoClient)
 			if valid {
 				//Login success
-				clientResponse = "LS#"
+				packetCode = "LS#"
 				var freshlsp LoginSecretPacket
 				User, _ := getUser(username, mongoClient)
 				Inventory, _ := getInventory(User.Account_id, mongoClient)
@@ -513,17 +516,17 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 
 				freshlsp.Region = freshRegionData
 
-				freshlspJSON, _ := json.Marshal(freshlsp)
-				lspData := "?" + string(freshlspJSON)
-				loginResponse = string(freshlspJSON)
-				chainWriteResponse(User.Account_id, requestID, "LS#", lspData, byteLimiter, clientConnection, "LOGIN SECRET PACKET", false)
+				contentJSON, _ := json.Marshal(freshlsp)
+				packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "LSP", contentJSON)
+				chainWriteResponse(User.Account_id, requestIDSTR, packet, byteLimiter, clientConnection, false)
 			} else if !valid {
 				//Login fail
-				clientResponse = "LF#"
-				clientResponse += "?" + loginResponse
+				packetCode = "LF#"
+				content := loginResponse
+				packet := createSimpleDeliveryPacket(requestIDSTR, packetCode, "LOGIN", content)
 				fmt.Println(Info(clientResponse))
 				fakeID := uuid.New()
-				writeResponse(fakeID, requestID, clientResponse, clientConnection, true)
+				writeResponse(fakeID, requestIDSTR, packet, clientConnection, true)
 			}
 			//get a good port number for the udplistener and for the client to connect to
 			//wg.Add(1)
@@ -534,68 +537,68 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		if packetCode == "LE#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Equip to loadout"))
-			requestID, accountIDSTR, itemID := processTier3Packet(packetMessage)
+			requestIDSTR, accountIDSTR, itemID := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			equipFeedback := equipItem(accountID, itemID, mongoClient)
-			clientResponse += equipFeedback
-			writeResponse(accountID, requestID, clientResponse, clientConnection, false)
+			packet := createSimpleDeliveryPacket(requestIDSTR, packetCode, "LOADOUT", equipFeedback)
+			writeResponse(accountID, requestIDSTR, packet, clientConnection, false)
 		}
 		if packetCode == "LL#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Level packet received!"))
-			accountIDSTR, requestID, levelID := processTier3Packet(packetMessage)
+			requestIDSTR, accountIDSTR, levelID := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			var freshLevel LevelData
 			level := getLevel(levelID, mongoClient)
 			NPC := getNPCs(level.Residents, mongoClient)
 			freshLevel.Level = level
 			freshLevel.Residents = NPC
-			levelDataJSON, _ := json.Marshal(freshLevel)
-			levelData := "?" + string(levelDataJSON)
-			chainWriteResponse(accountID, requestID, packetCode, levelData, byteLimiter, clientConnection, "LEVEL", false)
+			contentJSON, _ := json.Marshal(freshLevel)
+			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, ":EVEL", contentJSON)
+			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 		}
 		if packetCode == "LR#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Read loadout packet received!"))
-			requestID, accountIDSTR := processTier2Packet(packetMessage)
+			requestIDSTR, accountIDSTR := processTier2Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			loadout, _ := getLoadout(accountID, mongoClient)
 			loadoutJSON, _ := json.Marshal(loadout)
-			loadoutData := "?" + string(loadoutJSON)
-			chainWriteResponse(accountID, requestID, packetCode, loadoutData, byteLimiter, clientConnection, "LOADOUT", false)
+			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "LOADOUT", loadoutJSON)
+			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 		}
 		if packetCode == "LU#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Update EXP packet received!"))
-			requestID, accountIDSTR, streamedEXPString := processTier3Packet(packetMessage)
+			requestIDSTR, accountIDSTR, streamedEXPString := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			streamedEXP, _ := strconv.ParseFloat(streamedEXPString, 64)
 			newTotalEXP := updateProfile_EXP(accountID, streamedEXP, mongoClient)
-			newTotalEXPSTR := strconv.FormatFloat(newTotalEXP, 'E', -1, 64)
-			clientResponse += "?" + newTotalEXPSTR
-			writeResponse(accountID, requestID, clientResponse, clientConnection, false)
+			content := strconv.FormatFloat(newTotalEXP, 'E', -1, 64)
+			packet := createSimpleDeliveryPacket(requestIDSTR, packetCode, "EXP", content)
+			writeResponse(accountID, requestIDSTR, packet, clientConnection, false)
 		}
 		if packetCode == "LUE#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Unequip from loadout"))
-			requestID, accountIDSTR, itemID := processTier3Packet(packetMessage)
+			requestIDSTR, accountIDSTR, itemID := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
-			unequipFeedback := unequipItem(accountID, itemID, mongoClient)
-			clientResponse += unequipFeedback
-			writeResponse(accountID, requestID, clientResponse, clientConnection, false)
+			content := unequipItem(accountID, itemID, mongoClient)
+			packet := createSimpleDeliveryPacket(requestIDSTR, packetCode, "LOADOUT", content)
+			writeResponse(accountID, requestIDSTR, packet, clientConnection, false)
 		}
 		if packetCode == "ML#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Map load packet received"))
-			accountIDSTR, requestID := processTier2Packet(packetMessage)
+			requestIDSTR, accountIDSTR := processTier2Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
-			mapJSON, _ := json.Marshal(mapInstance.ConnectedClients)
-			mapData := "?" + string(mapJSON)
-			chainWriteResponse(accountID, requestID, packetCode, mapData, byteLimiter, clientConnection, "MAP", false)
+			contentJSON, _ := json.Marshal(mapInstance.ConnectedClients)
+			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "MAP", contentJSON)
+			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 		}
 		if packetCode == "OK#" {
 			fmt.Println(IncomingPacket("OK Packet received!"))
-			accountIDSTR, requestIDSTR := processTier2Packet(packetMessage)
+			requestIDSTR, accountIDSTR := processTier2Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			requestID, _ := uuid.Parse(requestIDSTR)
 			_, found := playerPacketCache[accountID].PacketCache[requestID]
@@ -611,7 +614,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Register packet received!"))
 			fmt.Println(Info(packetMessage))
-			requestID, username, password := processTier3Packet(packetMessage)
+			requestIDSTR, username, password := processTier3Packet(packetMessage)
 			registerResponse, valid, accountID := handleRegistration(username, password, mongoClient)
 			if valid {
 				//Register success
@@ -626,14 +629,14 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 				//Register fail
 				clientResponse = "RF#"
 			}
-			clientResponse += "?" + registerResponse
-			writeResponse(accountID, requestID, clientResponse, clientConnection, true)
+			packet := createSimpleDeliveryPacket(requestIDSTR, packetCode, "REGISTER", clientResponse+registerResponse)
+			writeResponse(accountID, requestIDSTR, packet, clientConnection, true)
 		}
 		if packetCode == "RLL#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Region and Level packet received!"))
 			fmt.Println(Info(packetMessage))
-			requestID, accountIDSTR, regionID, levelID := processTier4Packet(packetMessage)
+			requestIDSTR, accountIDSTR, regionID, levelID := processTier4Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			var freshRegionData RegionData
 			var freshLevelData LevelData
@@ -644,41 +647,41 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			freshLevelData.Level = level
 			freshLevelData.Residents = NPC
 			freshRegionData.LevelData = &freshLevelData
-			regionDataJSON, _ := json.Marshal(freshRegionData)
-			regionData := "?" + string(regionDataJSON)
-			chainWriteResponse(accountID, requestID, packetCode, regionData, byteLimiter, clientConnection, "REGION", false)
+			contentJSON, _ := json.Marshal(freshRegionData)
+			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "REGION", contentJSON)
+			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 		}
 		if packetCode == "SH#" {
 			fmt.Println(IncomingPacket("Shopkeeper Request Packet received"))
-			requestID, accountIDSTR, npcID := processTier3Packet(packetMessage)
+			requestIDSTR, accountIDSTR, npcID := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			if entry, found := ALLshopkeepers[npcID]; found {
 				shopkeeper := entry
-				shopkeeperJSON, _ := json.Marshal(shopkeeper)
-				shopkeeperData := "?" + string(shopkeeperJSON)
-				chainWriteResponse(accountID, requestID, packetCode, shopkeeperData, byteLimiter, clientConnection, "SHOPKEEPER", false)
+				contentJSON, _ := json.Marshal(shopkeeper)
+				packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "SHOPKEEPER", contentJSON)
+				chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 			}
 		}
 		if packetCode == "SR#" {
 			fmt.Println(IncomingPacket("Read Spell Index packet received!"))
-			requestID, accountIDSTR := processTier2Packet(packetMessage)
+			requestIDSTR, accountIDSTR := processTier2Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			spellIndex, _ := getSpellIndex(accountID, mongoClient)
-			spellIndexJSON, _ := json.Marshal(spellIndex)
-			spellIndexData := "?" + string(spellIndexJSON)
-			chainWriteResponse(accountID, requestID, packetCode, spellIndexData, byteLimiter, clientConnection, "SPELLINDEX", false)
+			contentJSON, _ := json.Marshal(spellIndex)
+			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "SPELLINDEX", contentJSON)
+			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 		}
 		if packetCode == "SOS#" {
 			fmt.Println(IncomingPacket("SOS Packet received!"))
-			accountIDSTR, requestIDSTR := processTier2Packet(packetMessage)
+			requestIDSTR, accountIDSTR := processTier2Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			requestID, _ := uuid.Parse(requestIDSTR)
 			SOSPacket, found := playerPacketCache[accountID].PacketCache[requestID]
 			if found {
 				if SOSPacket.Chain {
-					chainWriteResponse(accountID, requestIDSTR, SOSPacket.PacketCode, SOSPacket.Content, byteLimiter, clientConnection, SOSPacket.ServiceType, true)
+					chainWriteResponse(accountID, requestIDSTR, SOSPacket, byteLimiter, clientConnection, true)
 				} else if !SOSPacket.Chain {
-					writeResponse(accountID, requestIDSTR, SOSPacket.Content, clientConnection, true)
+					writeResponse(accountID, requestIDSTR, SOSPacket, clientConnection, true)
 				}
 			} else {
 				fmt.Println(Warn("SOS Packet ID : " + requestIDSTR + " is NOT Found!"))
@@ -687,20 +690,21 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 		if packetCode == "SU#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Update Spell Index packet received!"))
-			requestID, accountIDSTR, spellID := processTier3Packet(packetMessage)
+			requestIDSTR, accountIDSTR, spellID := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
-			clientResponse += "?" + addSpell(accountID, spellID, mongoClient)
-			writeResponse(accountID, requestID, clientResponse, clientConnection, false)
+			content := addSpell(accountID, spellID, mongoClient)
+			packet := createSimpleDeliveryPacket(requestIDSTR, packetCode, "SPELL", content)
+			writeResponse(accountID, requestIDSTR, packet, clientConnection, false)
 		}
 		if packetCode == "VR#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Load vital packet received!"))
-			requestID, accountIDSTR := processTier2Packet(packetMessage)
+			requestIDSTR, accountIDSTR := processTier2Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			vital, _ := getVital(accountID, mongoClient)
 			vitalJSON, _ := json.Marshal(vital)
-			vitalData := "?" + string(vitalJSON)
-			chainWriteResponse(accountID, requestID, packetCode, vitalData, byteLimiter, clientConnection, "PROFILE", false)
+			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "PROFILE", vitalJSON)
+			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 		}
 		if packetMessage == "STOP" {
 			fmt.Println("Client connection has exited")
@@ -710,15 +714,39 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 	}
 	clientConnection.Close()
 }
-func addPacketToCache(accountID uuid.UUID, requestID string, content string, chain bool, serviceType string, packetCode string) {
+func createMultiDeliveryPacket(requestIDSTR string, packetCode string, serviceType string, contentJSON []byte) Packet {
 	var packet Packet
-	packetID, _ := uuid.Parse(requestID)
-	packet.PacketID = packetID
-	packet.Chain = chain
+	requestID, _ := uuid.Parse(requestIDSTR)
+	packet.PacketID = requestID
 	packet.PacketCode = packetCode
+	packet.Chain = true
+	packet.ServiceType = serviceType
+	cleanedJSON := "@\"" + string(contentJSON) + "\"@"
+	packet.Content = string(cleanedJSON)
+	return packet
+}
+func createSimpleDeliveryPacket(requestIDSTR string, packetCode string, serviceType string, content string) Packet {
+	var packet Packet
+	requestID, _ := uuid.Parse(requestIDSTR)
+	packet.PacketID = requestID
+	packet.PacketCode = packetCode
+	packet.Chain = false
 	packet.ServiceType = serviceType
 	packet.Content = content
-	playerPacketCache[accountID].PacketCache[packetID] = packet
+	return packet
+}
+func addPacketToCache(accountID uuid.UUID, packet Packet) {
+	if _, ok := playerPacketCache[accountID]; !ok {
+		var newCache PlayerPacketCache
+		newCache.PacketCache = map[uuid.UUID]Packet{}
+		playerPacketCache[accountID] = newCache
+	}
+	if playerPacketCache[accountID].PacketCache == nil {
+		b := make(map[uuid.UUID]Packet)
+		b[packet.PacketID] = packet
+		playerPacketCache[accountID].PacketCache[packet.PacketID] = b[packet.PacketID]
+	}
+	playerPacketCache[accountID].PacketCache[packet.PacketID] = packet
 }
 func packetDissect(netData string) (string, string) {
 	data := strings.TrimSpace(string(netData))
@@ -772,18 +800,22 @@ func getArrayFromString(packetMessage string) []int {
 	}
 	return itemArray
 }
-func writeResponse(accountID uuid.UUID, requestID string, clientResponse string, clientConnection net.Conn, resend bool) {
+func writeResponse(accountID uuid.UUID, requestID string, packet Packet, clientConnection net.Conn, resend bool) {
+	packetJSON, _ := json.Marshal(packet)
+	clientResponse := packet.PacketCode + "?" + string(packetJSON)
 	if !resend {
-		addPacketToCache(accountID, requestID, clientResponse, false, "", "")
+		addPacketToCache(accountID, packet)
 	}
 	clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(clientResponse), "\"")))
 }
-func chainWriteResponse(accountID uuid.UUID, requestID string, packetCode string, totalData string, byteLimiter int, clientConnection net.Conn, serviceType string, resend bool) {
+func chainWriteResponse(accountID uuid.UUID, requestID string, packet Packet, byteLimiter int, clientConnection net.Conn, resend bool) {
+	packetJSON, _ := json.Marshal(packet)
+	packetData := "?" + string(packetJSON)
 	if !resend {
-		addPacketToCache(accountID, requestID, totalData, true, serviceType, packetCode)
+		addPacketToCache(accountID, packet)
 	}
-	base := strings.Replace(packetCode, "#", "", -1)
-	totalByteData := []byte(strings.Trim(strconv.QuoteToASCII(totalData), "\""))
+	base := strings.Replace(packet.PacketCode, "#", "", -1)
+	totalByteData := []byte(strings.Trim(strconv.QuoteToASCII(packetData), "\""))
 	dataPartitions := len(totalByteData) / byteLimiter
 	fullPartitions := 0
 	remainingBytes := len(totalByteData) % byteLimiter
@@ -810,12 +842,12 @@ func chainWriteResponse(accountID uuid.UUID, requestID string, packetCode string
 		} else {
 			clientResponse = constructedPacketCode + string(partitionedInventory)
 		}
-		fmt.Println(Info("("+serviceType+") "+"Sent message back to client : ", clientResponse))
+		fmt.Println(Info("("+packet.ServiceType+") "+"Sent message back to client : ", clientResponse))
 		clientConnection.Write([]byte(clientResponse))
 	}
-	fmt.Println(Info("Size of ", serviceType, " data in bytes : ", len(totalByteData)))
-	fmt.Println(Info("Size of remaining ", serviceType, " in bytes : ", len(totalByteData)%byteLimiter))
-	fmt.Println(Info("Size of ", serviceType, " partitions : ", dataPartitions))
+	fmt.Println(Info("Size of ", packet.ServiceType, " data in bytes : ", len(totalByteData)))
+	fmt.Println(Info("Size of remaining ", packet.ServiceType, " in bytes : ", len(totalByteData)%byteLimiter))
+	fmt.Println(Info("Size of ", packet.ServiceType, " partitions : ", dataPartitions))
 }
 func createBattle(monsters *[]Monster, quantity int) *BattleSession {
 	var battle BattleSession
@@ -1978,6 +2010,7 @@ func main() {
 	uri := "mongodb+srv://admin:london1234@cluster0.8acnf.mongodb.net/myFirstDatabase?retryWrites=true&w=majority"
 	mapInstance = Map{}
 	mapInstance.ConnectedClients = make(map[uuid.UUID]Client)
+	playerPacketCache = map[uuid.UUID]PlayerPacketCache{}
 	//initialize mongoDB client
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

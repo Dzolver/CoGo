@@ -23,35 +23,47 @@ import (
 )
 
 type User struct {
+	ObjectID   primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
+	Account_id uuid.UUID          `json:"uuid" bson:"uuid,omitempty"`
+	User_id    string             `json:"user_id" default:"" bson:"user_id, omitempty"`
+	Password   string             `json:"password" default:"" bson:"password, omitempty"`
+	Active     int                `json:"active" default:"" bson:"active,omitempty"`
+	Logins     int                `json:"logins" default:"" bson:"logins, omitempty"`
+}
+type Profile struct {
 	ObjectID     primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
 	Account_id   uuid.UUID          `json:"uuid" bson:"uuid,omitempty"`
-	User_id      string             `json:"user_id" default:"" bson:"user_id, omitempty"`
-	Password     string             `json:"password" default:"" bson:"password, omitempty"`
-	Active       int                `json:"active" default:"" bson:"active,omitempty"`
-	Logins       int                `json:"logins" default:"" bson:"logins, omitempty"`
+	Name         string             `json:"name" default:"" bson:"name, omitempty"`
+	Level        int                `json:"level" default:"" bson:"level, omitempty"`
+	Age          int                `json:"age" default:"" bson:"age, omitempty"`
+	Title        string             `json:"title" default:"" bson:"title,omitempty"`
+	Current_EXP  float64            `json:"current_exp" default:"" bson:"current_exp, omitempty"`
+	Total_EXP    float64            `json:"total_exp" default:"" bson:"total_exp, omitempty"`
+	Max_EXP      float64            `json:"max_exp" default:"" bson:"max_exp, omitempty"`
+	Race_id      string             `json:"race_id" default:"" bson:"race_id, omitempty"`
+	Race_name    string             `json:"race_name" default:"" bson:"race_name, omitempty"`
+	Class_id     string             `json:"class_id" default:"" bson:"class_id, omitempty"`
+	Class_name   string             `json:"class_name" default:"" bson:"class_name, omitempty"`
 	LastPosition Position           `json:"last_position" bson:"last_position,omitempty"`
 	LastRegion   string             `json:"last_region" default:"" bson:"last_region,omitempty"`
 	LastLevel    string             `json:"last_level" default:"" bson:"last_level,omitempty"`
+	Items        ItemRange          `json:"items" default:"" bson:"items,omitempty"`
+	Purse        Purse              `json:"purse" default:"" bson:"purse,omitempty"`
+	Loadout      Loadout            `json:"loadout" default:"" bson:"omitempty"`
+	Stats        Stats              `json:"stats" default:"" bson:"omitempty"`
+	BaseStats    Stats              `json:"base_stats" default:"" bson:"omitempty"`
+	SpellIndex   []Spell            `json:"spell_index" default:"" bson:"omitempty"`
+	Description  string             `json:"description" default:"" bson:"description, omitempty"`
 }
-type PlayerInventory struct {
-	ObjectID   primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
-	Account_id uuid.UUID          `json:"uuid" bson:"uuid,omitempty"`
-	Purse      Purse              `json:"purse" bson:"purse, omitempty"`
-	Equipment  Equipment          `json:"equipment" bson:"equipment, omitempty"`
-	Items      Items              `json:"items" bson:"items, omitempty"`
+type Loadout struct {
+	Head        string `json:"head" bson:"head, omitempty"`
+	Body        string `json:"body" bson:"body, omitempty"`
+	Feet        string `json:"feet" bson:"feet, omitempty"`
+	Weapon      string `json:"weapon" bson:"weapon, omitempty"`
+	Accessory_1 string `json:"accessory_1" bson:"accessory_1, omitempty"`
+	Accessory_2 string `json:"accessory_2" bson:"accessory_2, omitempty"`
+	Accessory_3 string `json:"accessory_3" bson:"accessory_3, omitempty"`
 }
-type PlayerLoadout struct {
-	ObjectID    primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
-	Account_id  uuid.UUID          `json:"uuid" bson:"uuid,omitempty"`
-	Head        Item               `json:"head" bson:"Head, omitempty"`
-	Body        Item               `json:"body" bson:"Body, omitempty"`
-	Feet        Item               `json:"feet" bson:"Feet, omitempty"`
-	Weapon      Item               `json:"weapon" bson:"Weapon, omitempty"`
-	Accessory_1 Item               `json:"accessory_1" bson:"Accessory_1, omitempty"`
-	Accessory_2 Item               `json:"accessory_2" bson:"Accessory_2, omitempty"`
-	Accessory_3 Item               `json:"accessory_3" bson:"Accessory_3, omitempty"`
-}
-
 type Purse struct {
 	Bits float64 `json:"bits" default:"0" bson:"bits, omitempty"`
 }
@@ -68,6 +80,11 @@ type Item struct {
 	BaseValue    float64            `json:"base_value" bson:"base_value,omitempty"`
 }
 type Stats struct {
+	Strength     float64 `json:"strength" default:"0" bson:"strength, omitempty"`
+	Intelligence float64 `json:"intelligence" default:"0" bson:"intelligence, omitempty"`
+	Dexterity    float64 `json:"dexterity" default:"0" bson:"dexterity, omitempty"`
+	Charisma     float64 `json:"charisma" default:"0" bson:"charisma, omitempty"`
+	Luck         float64 `json:"luck" default:"0" bson:"luck, omitempty"`
 	Health       float64 `json:"health" default:"0" bson:"health"`
 	Mana         float64 `json:"mana" default:"0" bson:"mana"`
 	Attack       float64 `json:"attack" default:"0" bson:"attack"`
@@ -99,23 +116,6 @@ type ShopItem struct {
 	Item      Item      `json:"shop_item" bson:"shop_item"`
 	Price     float64   `json:"price" bson:"price"`
 }
-type Equipment struct {
-	Head      ItemRange `json:"head" bson:"Head, omitempty"`
-	Body      ItemRange `json:"body" bson:"Body, omitempty"`
-	Feet      ItemRange `json:"feet" bson:"Feet, omitempty"`
-	Weapon    ItemRange `json:"weapon" bson:"Weapon, omitempty"`
-	Accessory ItemRange `json:"accessory" bson:"Accessory, omitempty"`
-}
-type Items struct {
-	Consumable ItemRange `json:"consumable" bson:"Consumable, omitempty"`
-	Crafting   ItemRange `json:"crafting" bson:"Crafting, omitempty"`
-	Quest      ItemRange `json:"quest" bson:"Quests, omitempty"`
-}
-type PlayerSpellIndex struct {
-	ObjectID    primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
-	Account_id  uuid.UUID          `json:"uuid" bson:"uuid,omitempty"`
-	Spell_index []Spell            `json:"spell_index" bson:"spell_index, omitempty"`
-}
 type Spell struct {
 	ObjectID       primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
 	Spell_id       string             `json:"spell_id" bson:"spell_id, omitempty"`
@@ -146,26 +146,6 @@ type Effect struct {
 	Description      string `json:"description" bson:"description, omitempty"`
 	Effector         string `json:"effector" bson:"effector, omitempty"`
 }
-type PlayerProfile struct {
-	Name        string  `json:"name" default:"" bson:"name, omitempty"`
-	Level       int     `json:"level" default:"" bson:"level, omitempty"`
-	Age         int     `json:"age" default:"" bson:"age, omitempty"`
-	Title       string  `json:"title" default:"" bson:"title,omitempty"`
-	Current_EXP float64 `json:"current_exp" default:"" bson:"current_exp, omitempty"`
-	Total_EXP   float64 `json:"total_exp" default:"" bson:"total_exp, omitempty"`
-	Max_EXP     float64 `json:"max_exp" default:"" bson:"max_exp, omitempty"`
-	Race_id     string  `json:"race_id" default:"" bson:"race_id, omitempty"`
-	Race_name   string  `json:"race_name" default:"" bson:"race_name, omitempty"`
-	Class_id    string  `json:"class_id" default:"" bson:"class_id, omitempty"`
-	Class_name  string  `json:"class_name" default:"" bson:"class_name, omitempty"`
-}
-type PlayerVital struct {
-	ObjectID      primitive.ObjectID `json:"objectID" bson:"_id,omitempty"`
-	Account_id    uuid.UUID          `json:"uuid" bson:"uuid,omitempty"`
-	PlayerProfile PlayerProfile      `json:"profile" default:"" bson:"profile, omitempty"`
-	Stats         Stats              `json:"stats" default:"" bson:"stats, omitempty"`
-	BaseStats     Stats              `json:"base_stats" default:"" bson:"base_stats, omitempty"`
-}
 type Client struct {
 	Account_id       uuid.UUID    `json:"uuid" bson:"uuid, omitempty"`
 	ConnectTime      time.Time    `json:"connect_time" bson:"connect_time, omitempty"`
@@ -179,30 +159,16 @@ type Position struct {
 	Position_z float64 `json:"pos_z" default:"0" bson:"pos_z, omitempty"`
 }
 type BattlePacket struct {
-	BattleID        uuid.UUID         `json:"battle_id" default:"" bson:"battle_id"`
-	Vital           *PlayerVital      `json:"vital" default:"" bson:"vital, omitempty"`
-	Inventory       *PlayerInventory  `json:"inventory" default:"" bson:"inventory, omitempty"`
-	SpellIndex      *PlayerSpellIndex `json:"spellIndex" default:"" bson:"spellIndex, omitempty"`
-	Loadout         *PlayerLoadout    `json:"loadout" default:"" bson:"loadout, omitempty"`
-	Monsters        *[]Monster        `json:"monsters" default:"" bson:"monsters, omitempty"`
-	MonsterQuantity int               `json:"monster_quantity" default:"0" bson:"monster_quantity, omitempty"`
+	BattleID        uuid.UUID  `json:"battle_id" default:"" bson:"battle_id"`
+	PlayerProfile   *Profile   `json:"player_profile" default:"" bson:"player_profile, omitempty"`
+	Monsters        *[]Monster `json:"monsters" default:"" bson:"monsters, omitempty"`
+	MonsterQuantity int        `json:"monster_quantity" default:"0" bson:"monster_quantity, omitempty"`
 }
 type LoginSecretPacket struct {
-	User       *User             `json:"user_data" default:"" bson:"user_data,omitempty"`
-	Inventory  *PlayerInventory  `json:"inventory_data" default:"" bson:"inventory_data,omitempty"`
-	SpellIndex *PlayerSpellIndex `json:"spell_index_data" default:"" bson:"spell_index_data,omitempty"`
-	Loadout    *PlayerLoadout    `json:"loadout_data" default:"" bson:"loadout_data,omitempty"`
-	Vital      *PlayerVital      `json:"vital_data" default:"" bson:"vital_data,omitempty"`
-	Region     *RegionData       `json:"region_data" default:"" bson:"region_data,omitempty"`
+	User          *User       `json:"user_data" default:"" bson:"user_data,omitempty"`
+	PlayerProfile *Profile    `json:"player_profile" default:"" bson:"player_profile, omitempty"`
+	Region        *RegionData `json:"region_data" default:"" bson:"region_data,omitempty"`
 }
-type Map struct {
-	ConnectedClients map[uuid.UUID]Client `json:"connected_clients" bson:"connected_clients, omitempty"`
-}
-type Party struct {
-	Party_id uuid.UUID   `json:"party_id" bson:"party_id,omitempty"`
-	Members  []uuid.UUID `json:"members" bson:"members,omitempty"`
-}
-
 type Region struct {
 	ObjectID   primitive.ObjectID `json:"objectID" bson:"_id, omitempty"`
 	RegionID   string             `json:"region_id" default:"" bson:"regionID,omitempty"`
@@ -235,50 +201,11 @@ type Monster struct {
 	MonsterType    string             `json:"monster_type" default:"" bson:"monsterType,omitempty"`
 	GoldGain       int                `json:"gold_gain" default:"" bson:"goldGain,omitempty"`
 	ExperienceGain int                `json:"experience_gain" default:"" bson:"experienceGain,omitempty"`
-	MobVitals      *MobVitals         `json:"mob_vitals" default:"" bson:"mobVitals,omitempty"`
-}
-type MobVitals struct {
-	Profile        *MobProfile `json:"profile" default:"" bson:"profile,omitempty"`
-	Stats          *MobStats   `json:"stats" default:"" bson:"stats,omitempty"`
-	AttackActions  *[]Spell    `json:"attack_actions" default:"" bson:"attackActions,omitempty"`
-	DefenseActions *[]Spell    `json:"defense_actions" default:"" bson:"defenseActions,omitempty"`
-}
-type MobProfile struct {
-	Name         string   `json:"name" default:"" bson:"name, omitempty"`
-	Level        int      `json:"level" default:"0" bson:"level, omitempty"`
-	Element      string   `json:"element" default:"" bson:"element, omitempty"`
-	Regions      []string `json:"regions" bson:"regions, omitempty"`
-	Description  string   `json:"description" default:"" bson:"description, omitempty"`
-	Strength     float64  `json:"strength" default:"0" bson:"strength, omitempty"`
-	Intelligence float64  `json:"intelligence" default:"0" bson:"intelligence, omitempty"`
-	Dexterity    float64  `json:"dexterity" default:"0" bson:"dexterity, omitempty"`
-	Charisma     float64  `json:"charisma" default:"0" bson:"charisma, omitempty"`
-	Luck         float64  `json:"luck" default:"0" bson:"luck, omitempty"`
-}
-type MobStats struct {
-	Health       float64 `json:"health" default:"0" bson:"health"`
-	MaxHealth    float64 `json:"maxHealth" default:"0" bson:"maxHealth"`
-	Mana         float64 `json:"mana" default:"0" bson:"mana"`
-	Attack       float64 `json:"attack" default:"0" bson:"attack"`
-	MagicAttack  float64 `json:"magicAttack" default:"0" bson:"magicAttack"`
-	Defense      float64 `json:"defense" default:"0" bson:"defense"`
-	MagicDefense float64 `json:"magicDefense" default:"0" bson:"magicDefense"`
-	Armor        float64 `json:"armor" default:"0" bson:"armor"`
-	Evasion      float64 `json:"evasion" default:"0" bson:"evasion"`
-	Accuracy     float64 `json:"accuracy" default:"0" bson:"accuracy"`
-	Agility      float64 `json:"agility" default:"0" bson:"agility"`
-	Willpower    float64 `json:"willpower" default:"0" bson:"willpower"`
-	FireRes      float64 `json:"fireRes" default:"0" bson:"fireRes"`
-	WaterRes     float64 `json:"waterRes" default:"0" bson:"waterRes"`
-	EarthRes     float64 `json:"earthRes" default:"0" bson:"earthRes"`
-	WindRes      float64 `json:"windRes" default:"0" bson:"windRes"`
-	IceRes       float64 `json:"iceRes" default:"0" bson:"iceRes"`
-	EnergyRes    float64 `json:"energyRes" default:"0" bson:"energyRes"`
-	NatureRes    float64 `json:"natureRes" default:"0" bson:"natureRes"`
-	PoisonRes    float64 `json:"poisonRes" default:"0" bson:"poisonRes"`
-	MetalRes     float64 `json:"metalRes" default:"0" bson:"metalRes"`
-	LightRes     float64 `json:"lightRes" default:"0" bson:"lightRes"`
-	DarkRes      float64 `json:"darkRes" default:"0" bson:"darkRes"`
+	Profile        *Profile           `json:"profile" default:"" bson:"mobVitals,omitempty"`
+	Stats          *Stats             `json:"stats" default:"" bson:"stats,omitempty"`
+	Actions        *[]Spell           `json:"actions" default:"" bson:"attackActions,omitempty"`
+	Element        string             `json:"element" default:"" bson:"element, omitempty"`
+	Regions        []string           `json:"regions" bson:"regions, omitempty"`
 }
 type RegionData struct {
 	Region    *Region    `json:"region" default:"" bson:"region"`
@@ -314,16 +241,14 @@ type PlayerPacketCache struct {
 	PacketCache map[uuid.UUID]Packet `json:"packet_cache" default:""`
 }
 
-var count = 0
-var PACKET_SIZE = 10240
+var PACKET_SIZE = 10000
 var wg sync.WaitGroup
-var connectedUsers = make(map[string]bool)
-var portNumbers = make(map[string]int)
-var portNumbersReversed = make(map[string]string)
-var portIndex = 1
-var mapInstance Map
 var ALLshopkeepers = make(map[string]ShopKeeper)
 var playerPacketCache = make(map[uuid.UUID]PlayerPacketCache)
+var MASTER_ITEM_TABLE = ItemRange{}
+var MASTER_SPELL_TABLE []Spell
+var MASTER_MONSTER_TABLE []Monster
+
 var sessions Sessions
 var (
 	Info           = Teal
@@ -363,17 +288,14 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			return
 		}
 		packetCode, packetMessage := packetDissect(netData)
-		//fmt.Println(netData)
+		fmt.Println(packetMessage)
 		if packetCode == "BR#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Read for Battle packet received!"))
 			requestIDSTR, accountIDSTR, levelID := processTier3Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
 			var freshBattlePacket BattlePacket
-			vital, _ := getVital(accountID, mongoClient)
-			inventory, _ := getInventory(accountID, mongoClient)
-			spellIndex, _ := getSpellIndex(accountID, mongoClient)
-			loadout, _ := getLoadout(accountID, mongoClient)
+			playerProfile, _ := getProfile(accountID, mongoClient)
 			level := getLevel(levelID, mongoClient)
 			monsters := getMonsters(level.Monsters, mongoClient)
 			//create BattleSession out of this information and add to the list of sessions
@@ -381,10 +303,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			battle := createBattle(monsters, freshBattlePacket.MonsterQuantity)
 
 			freshBattlePacket.BattleID = battle.BattleID
-			freshBattlePacket.Vital = vital
-			freshBattlePacket.Inventory = inventory
-			freshBattlePacket.SpellIndex = spellIndex
-			freshBattlePacket.Loadout = loadout
+			freshBattlePacket.PlayerProfile = playerProfile
 			freshBattlePacket.Monsters = monsters
 
 			contentJSON, _ := json.Marshal(freshBattlePacket)
@@ -429,11 +348,9 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 				sessions.Battles[battleID] = entry
 				updateStatus = "True"
 			}
-			inventory, _ := getInventory(accountID, mongoClient)
-			inventoryJSON, _ := json.Marshal(inventory)
-			vital, _ := getVital(accountID, mongoClient)
-			vitalJSON, _ := json.Marshal(vital)
-			contentJSON := strconv.FormatFloat(exp, 'f', -1, 64) + "|" + strconv.FormatFloat(gold, 'f', -1, 64) + "|" + updateStatus + "|" + string(inventoryJSON) + "|" + string(vitalJSON)
+			profile, _ := getProfile(accountID, mongoClient)
+			profileJSON, _ := json.Marshal(profile)
+			contentJSON := strconv.FormatFloat(exp, 'f', -1, 64) + "|" + strconv.FormatFloat(gold, 'f', -1, 64) + "|" + updateStatus + "|" + string(profileJSON)
 			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "BATTLEFINISH", []byte(contentJSON))
 			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 		}
@@ -461,15 +378,6 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Delete Inventory packet received!"))
 		}
-		if packetCode == "IR#" {
-			fmt.Println(IncomingPacket("Read Inventory packet received!"))
-			requestIDSTR, accountIDSTR := processTier2Packet(packetMessage)
-			accountID, _ := uuid.Parse(accountIDSTR)
-			inventory, _ := getInventory(accountID, mongoClient)
-			inventoryJSON, _ := json.Marshal(inventory)
-			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "INVENTORY", inventoryJSON)
-			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
-		}
 		//Inventory update
 		if packetCode == "IU#" {
 			clientResponse = packetCode
@@ -490,33 +398,27 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			if valid {
 				//Login success
 				packetCode = "LS#"
-				var freshlsp LoginSecretPacket
+				var LSP LoginSecretPacket
 				User, _ := getUser(username, mongoClient)
-				Inventory, _ := getInventory(User.Account_id, mongoClient)
-				Loadout, _ := getLoadout(User.Account_id, mongoClient)
-				SpellIndex, _ := getSpellIndex(User.Account_id, mongoClient)
-				Vital, _ := getVital(User.Account_id, mongoClient)
-				freshlsp.User = User
-				freshlsp.Inventory = Inventory
-				freshlsp.Loadout = Loadout
-				freshlsp.SpellIndex = SpellIndex
-				freshlsp.Vital = Vital
+				Profile, _ := getProfile(User.Account_id, mongoClient)
+				LSP.User = User
+				LSP.PlayerProfile = Profile
 
-				var freshRegionData *RegionData = new(RegionData)
-				Region := getRegion(User.LastRegion, mongoClient)
-				freshRegionData.Region = Region
+				var FRD *RegionData = new(RegionData)
+				Region := getRegion(Profile.LastRegion, mongoClient)
+				FRD.Region = Region
 
-				var freshLevelData *LevelData = new(LevelData)
-				Level := getLevel(User.LastLevel, mongoClient)
+				var FLD *LevelData = new(LevelData)
+				Level := getLevel(Profile.LastLevel, mongoClient)
 				Residents := getNPCs(Level.Residents, mongoClient)
-				freshLevelData.Level = Level
-				freshLevelData.Residents = Residents
+				FLD.Level = Level
+				FLD.Residents = Residents
 
-				freshRegionData.LevelData = freshLevelData
+				FRD.LevelData = FLD
 
-				freshlsp.Region = freshRegionData
+				LSP.Region = FRD
 
-				contentJSON, _ := json.Marshal(freshlsp)
+				contentJSON, _ := json.Marshal(LSP)
 				packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "LSP", contentJSON)
 				chainWriteResponse(User.Account_id, requestIDSTR, packet, byteLimiter, clientConnection, false)
 			} else if !valid {
@@ -557,14 +459,14 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, ":EVEL", contentJSON)
 			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 		}
-		if packetCode == "LR#" {
+		if packetCode == "PR#" {
 			clientResponse = packetCode
 			fmt.Println(IncomingPacket("Read loadout packet received!"))
 			requestIDSTR, accountIDSTR := processTier2Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
-			loadout, _ := getLoadout(accountID, mongoClient)
-			loadoutJSON, _ := json.Marshal(loadout)
-			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "LOADOUT", loadoutJSON)
+			profile, _ := getProfile(accountID, mongoClient)
+			profileJSON, _ := json.Marshal(profile)
+			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "PROFILE", profileJSON)
 			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 		}
 		if packetCode == "LU#" {
@@ -586,15 +488,6 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			content := unequipItem(accountID, itemID, mongoClient)
 			packet := createSimpleDeliveryPacket(requestIDSTR, packetCode, "LOADOUT", content)
 			writeResponse(accountID, requestIDSTR, packet, clientConnection, false)
-		}
-		if packetCode == "ML#" {
-			clientResponse = packetCode
-			fmt.Println(IncomingPacket("Map load packet received"))
-			requestIDSTR, accountIDSTR := processTier2Packet(packetMessage)
-			accountID, _ := uuid.Parse(accountIDSTR)
-			contentJSON, _ := json.Marshal(mapInstance.ConnectedClients)
-			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "MAP", contentJSON)
-			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 		}
 		if packetCode == "OK#" {
 			fmt.Println(IncomingPacket("OK Packet received!"))
@@ -618,10 +511,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			registerResponse, valid, accountID := handleRegistration(username, password, mongoClient)
 			if valid {
 				//Register success
-				createInventory(accountID, mongoClient)
-				createLoadout(accountID, mongoClient)
-				createSpellIndex(accountID, mongoClient)
-				createVital(username, accountID, mongoClient)
+				createProfile(username, accountID, mongoClient)
 				addSpell(accountID, "Fireball", mongoClient)
 				addSpell(accountID, "Scorch", mongoClient)
 				clientResponse = "RS#"
@@ -638,16 +528,16 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			fmt.Println(Info(packetMessage))
 			requestIDSTR, accountIDSTR, regionID, levelID := processTier4Packet(packetMessage)
 			accountID, _ := uuid.Parse(accountIDSTR)
-			var freshRegionData RegionData
-			var freshLevelData LevelData
+			var FRD RegionData
+			var FLD LevelData
 			region := getRegion(regionID, mongoClient)
 			level := getLevel(levelID, mongoClient)
 			NPC := getNPCs(level.Residents, mongoClient)
-			freshRegionData.Region = region
-			freshLevelData.Level = level
-			freshLevelData.Residents = NPC
-			freshRegionData.LevelData = &freshLevelData
-			contentJSON, _ := json.Marshal(freshRegionData)
+			FRD.Region = region
+			FLD.Level = level
+			FLD.Residents = NPC
+			FRD.LevelData = &FLD
+			contentJSON, _ := json.Marshal(FRD)
 			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "REGION", contentJSON)
 			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 		}
@@ -661,15 +551,6 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 				packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "SHOPKEEPER", contentJSON)
 				chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 			}
-		}
-		if packetCode == "SR#" {
-			fmt.Println(IncomingPacket("Read Spell Index packet received!"))
-			requestIDSTR, accountIDSTR := processTier2Packet(packetMessage)
-			accountID, _ := uuid.Parse(accountIDSTR)
-			spellIndex, _ := getSpellIndex(accountID, mongoClient)
-			contentJSON, _ := json.Marshal(spellIndex)
-			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "SPELLINDEX", contentJSON)
-			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
 		}
 		if packetCode == "SOS#" {
 			fmt.Println(IncomingPacket("SOS Packet received!"))
@@ -696,23 +577,30 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			packet := createSimpleDeliveryPacket(requestIDSTR, packetCode, "SPELL", content)
 			writeResponse(accountID, requestIDSTR, packet, clientConnection, false)
 		}
-		if packetCode == "VR#" {
+		if packetCode == "TT#" {
 			clientResponse = packetCode
-			fmt.Println(IncomingPacket("Load vital packet received!"))
-			requestIDSTR, accountIDSTR := processTier2Packet(packetMessage)
-			accountID, _ := uuid.Parse(accountIDSTR)
-			vital, _ := getVital(accountID, mongoClient)
-			vitalJSON, _ := json.Marshal(vital)
-			packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "PROFILE", vitalJSON)
-			chainWriteResponse(accountID, requestIDSTR, packet, byteLimiter, clientConnection, false)
+			fmt.Println(IncomingPacket("TEST MESSAGE received!"))
+			testMessageSTR := processTier1Packet(packetMessage)
+			responseMessage := "Server response to : " + testMessageSTR
+			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(responseMessage), "\"")))
+		}
+		if packetCode == "XX#" {
+			clientResponse = packetCode
+			fmt.Println(IncomingPacket("CLIENT WANTS TO SAY HI!"))
+			clientMessage := processTier1Packet(packetMessage)
+			fmt.Println(Info(clientMessage))
+			greetings := sayHiToClient()
+			clientConnection.Write([]byte(strings.Trim(strconv.QuoteToASCII(greetings), "\"")))
 		}
 		if packetMessage == "STOP" {
 			fmt.Println("Client connection has exited")
-			count--
 			break
 		}
 	}
 	clientConnection.Close()
+}
+func sayHiToClient() string {
+	return "Hello Client - FROM SERVER"
 }
 func createMultiDeliveryPacket(requestIDSTR string, packetCode string, serviceType string, contentJSON []byte) Packet {
 	var packet Packet
@@ -885,98 +773,6 @@ func tcpListener(PORT string, cxt context.Context, mongoClient *mongo.Client) {
 			return
 		}
 		go handleTCPConnection(clientConnection, cxt, mongoClient)
-		count++
-	}
-}
-func handleNewUDPConnection(accountID string, broadcastAddress *net.UDPAddr, clientAddress *net.UDPAddr) bool {
-	fmt.Println("Handling new UDP Connection!")
-	connected := false
-	target_uuid, _ := uuid.Parse(accountID)
-	if _, existing := mapInstance.ConnectedClients[target_uuid]; !existing {
-		//add new client connection to client map instance
-		var freshClient Client
-		target_uuid, _ := uuid.Parse(accountID)
-		freshClient.Account_id = target_uuid
-		freshClient.ConnectTime = time.Now()
-		freshClient.UDPAddress = clientAddress
-		freshClient.BroadcastAddress = broadcastAddress
-		mapInstance.ConnectedClients[target_uuid] = freshClient
-		for key, element := range mapInstance.ConnectedClients {
-			fmt.Println("uuid:", key, "=>", "client broadcast address:", element.BroadcastAddress)
-		}
-		connected = true
-	}
-	return connected
-}
-func handleUDPConnection(netData string, clientAddress *net.UDPAddr, listenerConnection *net.UDPConn, mongoClient *mongo.Client) {
-	packetCode, packetMessage := packetDissect(netData)
-	if packetCode != "" {
-		//fmt.Println("UDP Net data:" + netData)
-		//fmt.Println("Packetcode : " + packetCode)
-		//fmt.Println("Packet msg : " + packetMessage)
-		if packetCode == "UDPC#" {
-			clientResponse := packetCode
-			fmt.Println("Start UDP stream packet received!")
-			accountID, broadcastAddr := processTier2Packet(packetMessage)
-			broadcastAddress, _ := net.ResolveUDPAddr("udp", broadcastAddr)
-			fmt.Println("User joined : " + accountID)
-			connected := handleNewUDPConnection(accountID, broadcastAddress, clientAddress)
-			if connected {
-				broadcastNewPlayer(accountID)
-			}
-			clientResponse += "?CONNECTED TO SERVER:" + strconv.FormatBool(connected)
-			data := []byte(clientResponse)
-			listenerConnection.WriteToUDP(data, clientAddress)
-		}
-		if packetCode == "M1#" {
-			accountID, x, y, z := processTier4Packet(packetMessage)
-			target_uuid, _ := uuid.Parse(accountID)
-			if player, existing := mapInstance.ConnectedClients[target_uuid]; existing {
-				player.Position.Position_x, _ = strconv.ParseFloat(x, 64)
-				player.Position.Position_y, _ = strconv.ParseFloat(y, 64)
-				player.Position.Position_z, _ = strconv.ParseFloat(z, 64)
-				//updateUserLastPosition(target_uuid, player.Position, mongoClient)
-				mapInstance.ConnectedClients[target_uuid] = player
-				// clientResponse := "Got your M1# message!"
-				// data := []byte(clientResponse)
-				// listenerConnection.WriteToUDP(data, clientAddress)
-			}
-			//broadcastSend <- mapInstance
-		}
-	}
-}
-func broadcastMap() {
-	local, _ := net.ResolveUDPAddr("udp4", ":6666")
-	broadcastAddress, _ := net.ResolveUDPAddr("udp", "255.255.255.255"+":23456")
-	connection, _ := net.DialUDP("udp", local, broadcastAddress)
-	defer connection.Close()
-	mapData := ""
-	// for _, client := range mapInstance.ConnectedClients {
-	// 	clientJSON, _ := json.Marshal(client)
-	// 	movementData += "?" + string(clientJSON)
-	// }
-	mapJSON, _ := json.Marshal(mapInstance.ConnectedClients)
-	mapData += string(mapJSON)
-	broadcastData := "BRO#"
-	broadcastData += mapData
-	//fmt.Println("MAP COUNT : ", len(mapInstance.ConnectedClients))
-	//fmt.Println("MAP DATA : " + mapData)
-	_, err := connection.Write([]byte(mapData))
-	if err != nil {
-		panic(err)
-	}
-}
-func broadcastNewPlayer(accountID string) {
-	local, _ := net.ResolveUDPAddr("udp4", ":6666")
-	broadcastAddress, _ := net.ResolveUDPAddr("udp", "255.255.255.255"+":23456")
-	connection, _ := net.DialUDP("udp", local, broadcastAddress)
-	defer connection.Close()
-	broadcastData := "NP#"
-	broadcastData += accountID
-	fmt.Println("New Player : " + broadcastData)
-	_, err := connection.Write([]byte(broadcastData))
-	if err != nil {
-		panic(err)
 	}
 }
 func udpListener(PORT string, cxt context.Context, mongoClient *mongo.Client) {
@@ -999,25 +795,8 @@ func udpListener(PORT string, cxt context.Context, mongoClient *mongo.Client) {
 			return
 		}
 		incomingPacket := string(buffer[0:n])
-		//fmt.Println(n, " UDP client address : ", clientAddress)
-		handleUDPConnection(incomingPacket, clientAddress, listenerConnection, mongoClient)
-		if len(mapInstance.ConnectedClients) > 0 {
-			broadcastMap()
-		}
-		// if strings.TrimSpace(string(buffer[0:n])) == "STOP" {
-		// 	fmt.Println("UDP client has exited!")
-		// 	count--
-		// 	break
-		// }
-		// data := []byte("UDP server acknowledges!")
-		// v, err := listenerConnection.WriteToUDP(data, clientAddress)
-		// if err != nil {
-		// 	fmt.Println(Failure(err))
-		// 	return
-		// }
-		// fmt.Print(v)
-		// count++
-		// processLimitChan <- count
+		fmt.Println(Success(clientAddress))
+		fmt.Println(IncomingPacket(incomingPacket))
 	}
 }
 func handleLogin(username string, password string, mongoClient *mongo.Client) (string, bool) {
@@ -1026,8 +805,6 @@ func handleLogin(username string, password string, mongoClient *mongo.Client) (s
 		if validateUser(player, mongoClient) {
 			fmt.Println(Success("Login successful!"))
 			playerJSON, _ := json.Marshal(player)
-			//positionJSON, _ := json.Marshal(player.LastPosition)
-			//response := fmt.Sprintf("Login successful;%v;%v;%v;%v", player.Account_id, player.User_id, player.Logins, string(positionJSON))
 			response := fmt.Sprintf("Login successful;%v", string(playerJSON))
 			return response, true
 		} else {
@@ -1054,22 +831,19 @@ func createUser(username string, password string, mongoClient *mongo.Client) uui
 	defer cancel()
 	database := mongoClient.Database("player")
 	users := database.Collection("users")
-	var freshUser User
-	freshUser.ObjectID = primitive.NewObjectID()
-	freshUser.Account_id = uuid.New()
-	freshUser.User_id = username
-	freshUser.Password = password
-	freshUser.Active = 0
-	freshUser.Logins = 0
-	freshUser.LastPosition = Position{}
-	freshUser.LastLevel = "00001"
-	freshUser.LastRegion = "001"
-	createResult, err := users.InsertOne(cxt, freshUser)
+	var newUser User
+	newUser.ObjectID = primitive.NewObjectID()
+	newUser.Account_id = uuid.New()
+	newUser.User_id = username
+	newUser.Password = password
+	newUser.Active = 0
+	newUser.Logins = 0
+	createResult, err := users.InsertOne(cxt, newUser)
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println(Success("New user added to db : ", createResult.InsertedID))
-	return freshUser.Account_id
+	return newUser.Account_id
 }
 func lookForUser(username string, mongoClient *mongo.Client) bool {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1105,8 +879,8 @@ func validateUser(player *User, mongoClient *mongo.Client) bool {
 		cxt,
 		bson.M{"uuid": player.Account_id},
 		bson.D{
-			{"$set", bson.D{{"active", 1}}},
-			{"$inc", bson.D{{"logins", 1}}},
+			{Key: "$set", Value: bson.D{{Key: "actiValue: ve", Value: 1}}},
+			{Key: "$inc", Value: bson.D{{Key: "logins", Value: 1}}},
 		}, options.Update().SetUpsert(true))
 	if err != nil {
 		fmt.Println(Failure(err))
@@ -1358,54 +1132,74 @@ func updateUserLastPosition(target_uuid uuid.UUID, lastPosition Position, mongoC
 		panic(err)
 	}
 	database := mongoClient.Database("player")
-	user := database.Collection("users")
+	user := database.Collection("profiles")
 	match := bson.M{"uuid": target_uuid}
 	change := bson.M{"$set": bson.D{
-		{"last_position", lastPosition},
+		{Key: "last_position", Value: lastPosition},
 	}}
 	_, err := user.UpdateOne(cxt, match, change)
-	//fmt.Printf("Updated %v Documents!\n", updateResponse.ModifiedCount)
 	if err != nil {
 		fmt.Println(Failure(err))
 		return false
 	}
 	return true
 }
-func createVital(userID string, accountID uuid.UUID, mongoClient *mongo.Client) bool {
+func createProfile(userID string, accountID uuid.UUID, mongoClient *mongo.Client) bool {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
 		panic(err)
 	}
 	database := mongoClient.Database("player")
-	profile := database.Collection("vital")
+	profile := database.Collection("profiles")
 
-	var freshVital PlayerVital
-	freshVital.ObjectID = primitive.NewObjectID()
-	freshVital.Account_id = accountID
-	freshVital.PlayerProfile.Name = userID
-	freshVital.PlayerProfile.Level = 1
-	freshVital.PlayerProfile.Age = 0
-	freshVital.PlayerProfile.Title = "Just a newbie"
-	freshVital.PlayerProfile.Current_EXP = 0
-	freshVital.PlayerProfile.Total_EXP = 0
-	freshVital.PlayerProfile.Max_EXP = 100
-	freshVital.PlayerProfile.Race_id = "human"
-	freshVital.PlayerProfile.Race_name = "Human"
-	freshVital.PlayerProfile.Class_id = "stranger"
-	freshVital.PlayerProfile.Class_name = "Stranger"
-	freshVital.Stats.Health = 100
-	freshVital.Stats.Mana = 100
-	freshVital.Stats.Attack = 1
-	freshVital.Stats.MagicAttack = 1
-	freshVital.Stats.Defense = 1
-	freshVital.Stats.MagicDefense = 1
-	freshVital.Stats.Accuracy = 1
-	freshVital.Stats.Agility = 1
-	freshVital.Stats.Willpower = 1
-	freshVital.BaseStats = freshVital.Stats
+	var newProfile Profile
+	newProfile.ObjectID = primitive.NewObjectID()
+	newProfile.Account_id = accountID
+	newProfile.Name = userID
+	newProfile.Level = 1
+	newProfile.Age = 0
+	newProfile.Title = "Just a newbie"
+	newProfile.Current_EXP = 0
+	newProfile.Total_EXP = 0
+	newProfile.Max_EXP = 100
+	newProfile.Race_id = "human"
+	newProfile.Race_name = "Human"
+	newProfile.Class_id = "stranger"
+	newProfile.Class_name = "Stranger"
+	newProfile.LastPosition = Position{}
+	newProfile.LastLevel = "00001"
+	newProfile.LastRegion = "001"
 
-	insertResult, err := profile.InsertOne(cxt, freshVital)
+	newProfile.Stats.Health = 100
+	newProfile.Stats.Mana = 100
+	newProfile.Stats.Attack = 1
+	newProfile.Stats.MagicAttack = 1
+	newProfile.Stats.Defense = 1
+	newProfile.Stats.MagicDefense = 1
+	newProfile.Stats.Accuracy = 1
+	newProfile.Stats.Agility = 1
+	newProfile.Stats.Willpower = 1
+	newProfile.Items.Collection = make([]Item, 0)
+
+	var newPurse Purse
+	newPurse.Bits = 0
+	newProfile.Purse = newPurse
+
+	var newLoadout Loadout
+	newLoadout.Head = "EMPTY"
+	newLoadout.Body = "EMPTY"
+	newLoadout.Feet = "EMPTY"
+	newLoadout.Weapon = "EMPTY"
+	newLoadout.Accessory_1 = "EMPTY"
+	newLoadout.Accessory_2 = "EMPTY"
+	newLoadout.Accessory_3 = "EMPTY"
+	newProfile.Loadout = newLoadout
+
+	newProfile.SpellIndex = make([]Spell, 0)
+	newProfile.BaseStats = newProfile.Stats
+
+	insertResult, err := profile.InsertOne(cxt, newProfile)
 	if err != nil {
 		fmt.Println(Failure(err))
 		return false
@@ -1413,7 +1207,7 @@ func createVital(userID string, accountID uuid.UUID, mongoClient *mongo.Client) 
 	fmt.Println(Success("Fresh Vital created for user: ", userID, " insertID: ", insertResult.InsertedID))
 	return true
 }
-func getVital(accountID uuid.UUID, mongoClient *mongo.Client) (*PlayerVital, bool) {
+func getProfile(accountID uuid.UUID, mongoClient *mongo.Client) (*Profile, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -1426,7 +1220,7 @@ func getVital(accountID uuid.UUID, mongoClient *mongo.Client) (*PlayerVital, boo
 		fmt.Println(Failure(err))
 		panic(err)
 	}
-	var filterResult []PlayerVital
+	var filterResult []Profile
 	if err = filterCursor.All(cxt, &filterResult); err != nil {
 		log.Fatal(err)
 	}
@@ -1441,45 +1235,45 @@ func updateProfile_EXP(accountID uuid.UUID, streamed_exp float64, mongoClient *m
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
 		panic(err)
 	}
-	playerVital, profileFound := getVital(accountID, mongoClient)
-	newTotalExp := playerVital.PlayerProfile.Total_EXP + streamed_exp
+	profile, profileFound := getProfile(accountID, mongoClient)
+	newTotalExp := profile.Total_EXP + streamed_exp
 	if profileFound {
 		fmt.Println(Success("Found player profile to update"))
 		database := mongoClient.Database("player")
-		profile := database.Collection("vital")
+		profiles := database.Collection("profiles")
 		match := bson.M{"uuid": accountID}
-		totalEXP := playerVital.PlayerProfile.Current_EXP + streamed_exp
-		fmt.Println(Info(totalEXP, " (TotalEXP) = ", playerVital.PlayerProfile.Current_EXP, " (current exp) + ", streamed_exp, " (streamed exp)"))
-		if totalEXP >= playerVital.PlayerProfile.Max_EXP {
+		totalEXP := profile.Current_EXP + streamed_exp
+		fmt.Println(Info(totalEXP, " (TotalEXP) = ", profile.Current_EXP, " (current exp) + ", streamed_exp, " (streamed exp)"))
+		if totalEXP >= profile.Max_EXP {
 			bufferEXP := 0.0
 			levelUpperLimit := 0
-			levelUpperLimitEXP := playerVital.PlayerProfile.Max_EXP
-			bufferEXP = playerVital.PlayerProfile.Max_EXP
+			levelUpperLimitEXP := profile.Max_EXP
+			bufferEXP = profile.Max_EXP
 			if totalEXP > bufferEXP {
 				for totalEXP > bufferEXP {
 					levelUpperLimit++
 					levelUpperLimitEXP += 50.0
-					bufferEXP += playerVital.PlayerProfile.Max_EXP + float64(levelUpperLimit*50.0)
+					bufferEXP += profile.Max_EXP + float64(levelUpperLimit*50.0)
 				}
 			}
 			newCurrentEXP := levelUpperLimitEXP - (bufferEXP - totalEXP)
-			newLevel := playerVital.PlayerProfile.Level + levelUpperLimit
+			newLevel := profile.Level + levelUpperLimit
 			newMaxEXP := levelUpperLimitEXP
 			change := bson.D{
-				{"$set", bson.D{{"profile.level", newLevel}, {"profile.current_exp", newCurrentEXP}, {"profile.max_exp", newMaxEXP}, {"profile.total_exp", newTotalExp}}},
+				{Key: "$set", Value: bson.D{{Key: "profile.level", Value: newLevel}, {Key: "profile.current_exp", Value: newCurrentEXP}, {Key: "profile.max_exp", Value: newMaxEXP}, {Key: "profile.total_exp", Value: newTotalExp}}},
 			}
-			_, err := profile.UpdateOne(cxt, match, change)
+			_, err := profiles.UpdateOne(cxt, match, change)
 			if err != nil {
 				fmt.Println(Failure(err))
 				return 0
 			}
 			return newTotalExp
-		} else if totalEXP < playerVital.PlayerProfile.Max_EXP {
+		} else if totalEXP < profile.Max_EXP {
 			newCurrentEXP := totalEXP
 			change := bson.D{
-				{"$set", bson.D{{"profile.current_exp", newCurrentEXP}, {"profile.total_exp", newTotalExp}}},
+				{Key: "$set", Value: bson.D{{Key: "profile.current_exp", Value: newCurrentEXP}, {Key: "profile.total_exp", Value: newTotalExp}}},
 			}
-			_, err := profile.UpdateOne(cxt, match, change)
+			_, err := profiles.UpdateOne(cxt, match, change)
 			if err != nil {
 				fmt.Println(Failure(err))
 				return 0
@@ -1496,19 +1290,19 @@ func addBits(accountID uuid.UUID, streamed_bits float64, add bool, mongoClient *
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
 		panic(err)
 	}
-	playerInventory, inventoryFound := getInventory(accountID, mongoClient)
+	profile, profileFound := getProfile(accountID, mongoClient)
 	newTotalBits := 0.0
 	if add {
-		newTotalBits = playerInventory.Purse.Bits + streamed_bits
+		newTotalBits = profile.Purse.Bits + streamed_bits
 	} else {
 		newTotalBits = streamed_bits
 	}
-	if inventoryFound {
+	if profileFound {
 		database := mongoClient.Database("player")
-		inventory := database.Collection("inventory")
+		inventory := database.Collection("profiles")
 		entryArea := "purse.bits"
 		match := bson.M{"uuid": accountID}
-		change := bson.M{"$set": bson.D{{entryArea, newTotalBits}}}
+		change := bson.M{"$set": bson.D{{Key: entryArea, Value: newTotalBits}}}
 		_, err := inventory.UpdateOne(cxt, match, change)
 		if err != nil {
 			fmt.Println(Failure(err))
@@ -1525,52 +1319,8 @@ func getBits(accountID uuid.UUID, mongoClient *mongo.Client) float64 {
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
 		panic(err)
 	}
-	playerInventory, _ := getInventory(accountID, mongoClient)
-	return playerInventory.Purse.Bits
-}
-func createSpellIndex(accountID uuid.UUID, mongoClient *mongo.Client) bool {
-	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
-		panic(err)
-	}
-	database := mongoClient.Database("player")
-	spellIndex := database.Collection("spellIndex")
-
-	var freshSpellIndex PlayerSpellIndex
-	freshSpellIndex.ObjectID = primitive.NewObjectID()
-	freshSpellIndex.Account_id = accountID
-	freshSpellIndex.Spell_index = make([]Spell, 0)
-
-	insertResult, err := spellIndex.InsertOne(cxt, freshSpellIndex)
-	if err != nil {
-		fmt.Println(Failure(err))
-		return false
-	}
-	fmt.Println("Fresh Spell index created! insertID: ", insertResult.InsertedID)
-	return true
-}
-func getSpellIndex(accountID uuid.UUID, mongoClient *mongo.Client) (*PlayerSpellIndex, bool) {
-	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
-		panic(err)
-	}
-	database := mongoClient.Database("player")
-	spellIndex := database.Collection("spellIndex")
-	filterCursor, err := spellIndex.Find(cxt, bson.M{"uuid": accountID})
-	if err != nil {
-		fmt.Println(Failure(err))
-		panic(err)
-	}
-	var filterResult []PlayerSpellIndex
-	if err = filterCursor.All(cxt, &filterResult); err != nil {
-		log.Fatal(err)
-	}
-	if len(filterResult) == 1 {
-		return &filterResult[0], true
-	}
-	return nil, true
+	profile, _ := getProfile(accountID, mongoClient)
+	return profile.Purse.Bits
 }
 func addSpell(accountID uuid.UUID, spellID string, mongoClient *mongo.Client) string {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1579,7 +1329,7 @@ func addSpell(accountID uuid.UUID, spellID string, mongoClient *mongo.Client) st
 		panic(err)
 	}
 	database := mongoClient.Database("player")
-	spellIndex := database.Collection("spellIndex")
+	spellIndex := database.Collection("profiles")
 	retrievedSpell, spellFound := getSpell(spellID, mongoClient)
 	if spellFound {
 		entryArea := "spell_index"
@@ -1620,112 +1370,6 @@ func getSpell(spellID string, mongoClient *mongo.Client) (*Spell, bool) {
 	retrievedItem := spellResult[0]
 	return &retrievedItem, true
 }
-func getInventory(accountID uuid.UUID, mongoClient *mongo.Client) (*PlayerInventory, bool) {
-	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
-		panic(err)
-	}
-	database := mongoClient.Database("player")
-	inventory := database.Collection("inventory")
-	filterCursor, err := inventory.Find(cxt, bson.M{"uuid": accountID})
-	if err != nil {
-		fmt.Println(Failure(err))
-		panic(err)
-	}
-	var filterResult []PlayerInventory
-	if err = filterCursor.All(cxt, &filterResult); err != nil {
-		log.Fatal(err)
-	}
-	if len(filterResult) == 1 {
-		return &filterResult[0], true
-	}
-	return nil, true
-}
-func createInventory(accountID uuid.UUID, mongoClient *mongo.Client) bool {
-	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
-		panic(err)
-	}
-	database := mongoClient.Database("player")
-	inventory := database.Collection("inventory")
-
-	var freshInventory PlayerInventory
-	freshInventory.ObjectID = primitive.NewObjectID()
-	freshInventory.Account_id = accountID
-	var freshPurse Purse
-	freshPurse.Bits = 0
-	freshInventory.Purse = freshPurse
-	freshInventory.Equipment.Head.Collection = make([]Item, 0)
-	freshInventory.Equipment.Body.Collection = make([]Item, 0)
-	freshInventory.Equipment.Feet.Collection = make([]Item, 0)
-	freshInventory.Equipment.Weapon.Collection = make([]Item, 0)
-	freshInventory.Equipment.Accessory.Collection = make([]Item, 0)
-
-	freshInventory.Items.Consumable.Collection = make([]Item, 0)
-	freshInventory.Items.Crafting.Collection = make([]Item, 0)
-	freshInventory.Items.Quest.Collection = make([]Item, 0)
-
-	insertResult, err := inventory.InsertOne(cxt, freshInventory)
-	if err != nil {
-		fmt.Println(Failure(err))
-		return false
-	}
-	fmt.Println(Success("Fresh Inventory created for user! insertID: ", insertResult.InsertedID))
-	return true
-}
-func createLoadout(accountID uuid.UUID, mongoClient *mongo.Client) bool {
-	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
-		panic(err)
-	}
-	database := mongoClient.Database("player")
-	inventory := database.Collection("loadout")
-
-	var freshLoadout PlayerLoadout
-	freshLoadout.ObjectID = primitive.NewObjectID()
-	freshLoadout.Account_id = accountID
-
-	freshLoadout.Head = Item{}
-	freshLoadout.Body = Item{}
-	freshLoadout.Feet = Item{}
-	freshLoadout.Weapon = Item{}
-	freshLoadout.Accessory_1 = Item{}
-	freshLoadout.Accessory_2 = Item{}
-	freshLoadout.Accessory_3 = Item{}
-
-	insertResult, err := inventory.InsertOne(cxt, freshLoadout)
-	if err != nil {
-		fmt.Println(Failure(err))
-		return false
-	}
-	fmt.Println(Success("Fresh Loadout created for user! insertID: ", insertResult.InsertedID))
-	return true
-}
-func getLoadout(accountID uuid.UUID, mongoClient *mongo.Client) (*PlayerLoadout, bool) {
-	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
-		panic(err)
-	}
-	database := mongoClient.Database("player")
-	profile := database.Collection("loadout")
-	filterCursor, err := profile.Find(cxt, bson.M{"uuid": accountID})
-	if err != nil {
-		fmt.Println(Failure(err))
-		panic(err)
-	}
-	var filterResult []PlayerLoadout
-	if err = filterCursor.All(cxt, &filterResult); err != nil {
-		log.Fatal(err)
-	}
-	if len(filterResult) == 1 {
-		return &filterResult[0], true
-	}
-	return nil, true
-}
 func getItem(itemID string, mongoClient *mongo.Client) (*Item, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -1759,19 +1403,19 @@ func equipItem(accountID uuid.UUID, itemID string, mongoClient *mongo.Client) st
 		panic(err)
 	}
 	database := mongoClient.Database("player")
-	loadout := database.Collection("loadout")
+	profile := database.Collection("profiles")
 	retrievedItem, itemFound := getItem(itemID, mongoClient)
 	if itemFound {
 		entryArea := retrievedItem.Item_type
 		match := bson.M{"uuid": accountID}
-		change := bson.M{"$set": bson.M{entryArea: retrievedItem}}
-		updateResponse, err := loadout.UpdateOne(cxt, match, change)
+		change := bson.M{"$set": bson.M{entryArea: retrievedItem.Item_id}}
+		updateResponse, err := profile.UpdateOne(cxt, match, change)
 		fmt.Println(Info(updateResponse))
 		if err != nil {
 			fmt.Println(Failure(err))
 			return "EQUIP$0"
 		}
-		updateVital(accountID, retrievedItem, "add", mongoClient)
+		updateStats(accountID, retrievedItem, "add", mongoClient)
 		return "EQUIP$1"
 	}
 	return "EQUIP$0"
@@ -1783,43 +1427,43 @@ func unequipItem(accountID uuid.UUID, itemID string, mongoClient *mongo.Client) 
 		panic(err)
 	}
 	database := mongoClient.Database("player")
-	loadout := database.Collection("loadout")
+	loadout := database.Collection("profile")
 	retrievedItem, itemFound := getItem(itemID, mongoClient)
 	if itemFound {
 		entryArea := retrievedItem.Item_type
 		match := bson.M{"uuid": accountID}
-		change := bson.M{"$set": bson.M{entryArea: Item{}}}
+		change := bson.M{"$set": bson.M{entryArea: "EMPTY"}}
 		updateResponse, err := loadout.UpdateOne(cxt, match, change)
 		fmt.Println(Info(updateResponse))
 		if err != nil {
 			fmt.Println(Failure(err))
 			return "UNEQUIP$0"
 		}
-		updateVital(accountID, retrievedItem, "remove", mongoClient)
+		updateStats(accountID, retrievedItem, "remove", mongoClient)
 		return "UNEQUIP$1"
 	}
 	return "UNEQUIP$0"
 }
-func updateVital(accountID uuid.UUID, item *Item, operation string, mongoClient *mongo.Client) *PlayerVital {
+func updateStats(accountID uuid.UUID, item *Item, operation string, mongoClient *mongo.Client) *Profile {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
 		panic(err)
 	}
 	database := mongoClient.Database("player")
-	vital := database.Collection("vital")
-	retrievedVital, _ := getVital(accountID, mongoClient)
-	originalStats := retrievedVital.Stats
+	profiles := database.Collection("profiles")
+	profile, _ := getProfile(accountID, mongoClient)
+	originalStats := profile.Stats
 	updatedStats := updateStatsByItem(&originalStats, item, operation)
-	retrievedVital.Stats = *updatedStats
+	profile.Stats = *updatedStats
 	match := bson.M{"uuid": accountID}
-	change := bson.M{"$set": bson.D{{"profile", retrievedVital.PlayerProfile}, {"stats", retrievedVital.Stats}}}
-	updateResponse, err := vital.UpdateOne(cxt, match, change)
+	change := bson.M{"$set": bson.D{{Key: "stats", Value: profile.Stats}}}
+	updateResponse, err := profiles.UpdateOne(cxt, match, change)
 	fmt.Println(Info(updateResponse))
 	if err != nil {
 		fmt.Println(Failure(err))
 	}
-	return retrievedVital
+	return profile
 }
 func addInventoryItem(accountID uuid.UUID, itemID string, mongoClient *mongo.Client) string {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1828,13 +1472,13 @@ func addInventoryItem(accountID uuid.UUID, itemID string, mongoClient *mongo.Cli
 		panic(err)
 	}
 	database := mongoClient.Database("player")
-	inventory := database.Collection("inventory")
+	profiles := database.Collection("profiles")
 	retrievedItem, itemFound := getItem(itemID, mongoClient)
 	if itemFound {
-		entryArea := "equipment." + retrievedItem.Item_type + ".collection"
+		entryArea := "items.collection"
 		match := bson.M{"uuid": accountID}
-		change := bson.M{"$push": bson.M{entryArea: retrievedItem}}
-		updateResponse, err := inventory.UpdateOne(cxt, match, change)
+		change := bson.M{"$push": bson.M{entryArea: retrievedItem.Item_id}}
+		updateResponse, err := profiles.UpdateOne(cxt, match, change)
 		fmt.Println(Info(updateResponse))
 		if err != nil {
 			fmt.Println(Failure(err))
@@ -1915,15 +1559,13 @@ func removeInventoryItem(accountID uuid.UUID, itemID string, mongoClient *mongo.
 		panic(err)
 	}
 	database := mongoClient.Database("player")
-	inventory := database.Collection("inventory")
-	retrievedItem, itemFound := getItem(itemID, mongoClient)
+	profiles := database.Collection("profiles")
+	item, itemFound := getItem(itemID, mongoClient)
 	if itemFound {
-		entityType := strings.ToLower(retrievedItem.Entity)
-		entryArea := entityType + "." + retrievedItem.Item_type + ".collection"
+		entryArea := "items.collection"
 		match := bson.M{"uuid": accountID}
-		arr := []Item{*retrievedItem}
-		change := bson.M{"$pull": bson.M{entryArea: bson.M{"$in": arr}}}
-		updateResponse, err := inventory.UpdateOne(cxt, match, change)
+		change := bson.M{"$pull": bson.M{entryArea: bson.M{"$in": item.Item_id}}}
+		updateResponse, err := profiles.UpdateOne(cxt, match, change)
 		fmt.Println(Info(updateResponse))
 		if err != nil {
 			fmt.Println(Failure(err))
@@ -1941,6 +1583,11 @@ func updateStatsByItem(originalStats *Stats, item *Item, operation string) *Stat
 	} else if operation == "remove" {
 		op = -1.0
 	}
+	originalStats.Strength += (op * item.Stats.Strength)
+	originalStats.Intelligence += (op * item.Stats.Intelligence)
+	originalStats.Dexterity += (op * item.Stats.Dexterity)
+	originalStats.Charisma += (op * item.Stats.Charisma)
+	originalStats.Luck += (op * item.Stats.Luck)
 	originalStats.Health += (op * item.Stats.Health)
 	originalStats.Mana += (op * item.Stats.Mana)
 	originalStats.Attack += (op * item.Stats.Attack)
@@ -1966,36 +1613,6 @@ func updateStatsByItem(originalStats *Stats, item *Item, operation string) *Stat
 
 	return originalStats
 }
-func IsNewUser(userID string) bool {
-	var isNewUser bool
-	if connectedUsers[userID] {
-		isNewUser = false
-	} else {
-		isNewUser = true
-	}
-	return isNewUser
-}
-func createPorts() {
-	min := 10000
-	max := 20000
-	portCandidate := strconv.Itoa(rand.Intn(max-min) + min)
-	if portNumbers[portCandidate] != 0 {
-		createPorts()
-	} else {
-		portNumbers[portCandidate] = portIndex
-		portNumbersReversed[strconv.Itoa(portIndex)] = portCandidate
-		if len(portNumbers) == 2000 {
-			return
-		}
-		portIndex++
-	}
-}
-func getPortFromIndex(index int) string {
-	return portNumbersReversed[strconv.Itoa(index)]
-}
-func getIndexFromPort(port string) string {
-	return strconv.Itoa(portNumbers[port])
-}
 
 func main() {
 	//createPorts()
@@ -2006,25 +1623,32 @@ func main() {
 	} else {
 		fmt.Println(Success("SERVER RUNNING on Port " + arguments[1] + " !"))
 	}
+
 	//mongoDB specs
-	uri := "mongodb+srv://admin:london1234@cluster0.8acnf.mongodb.net/myFirstDatabase?retryWrites=true&w=majority"
-	mapInstance = Map{}
-	mapInstance.ConnectedClients = make(map[uuid.UUID]Client)
+	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
+	opts := options.Client().ApplyURI("mongodb+srv://admin:w1583069@cluster0.8acnf.mongodb.net/?retryWrites=true&w=majority").SetServerAPIOptions(serverAPI)
 	playerPacketCache = map[uuid.UUID]PlayerPacketCache{}
 	//initialize mongoDB client
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	mongoClient, err := mongo.Connect(cxt, options.Client().ApplyURI(uri))
+	mongoClient, err := mongo.Connect(cxt, opts)
 	if err != nil {
 		panic(err)
+	} else {
+		fmt.Println(Success("Connected to MongoDB cluster0..."))
 	}
+
+	//-------------------------------------------------------------------------------------------------------------------
+	//TODO - Get a copy of the master Item and Spell collection from the database when the server is connected and online
+	//-------------------------------------------------------------------------------------------------------------------
+
 	//createShopKeeper("NPC1", mongoClient)
 	//addCatalogueItem("WizardHat", "NPC1", 7, mongoClient)
 	//createShopKeeper("NPC0", mongoClient)
 	//addCatalogueItem("WizardRobe", "NPC0", 23, mongoClient)
+	// addInventoryItem("asd", "WizardHat", mongoClient)
+	// addInventoryItem("asd", "WizardHat", mongoClient)
 
-	// addInventoryItem("asd", "WizardHat", mongoClient)
-	// addInventoryItem("asd", "WizardHat", mongoClient)
 	getShopKeepersForServer(mongoClient)
 	//disconnect mongoDB client on return
 	defer func() {

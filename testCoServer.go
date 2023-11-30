@@ -49,10 +49,10 @@ type Profile struct {
 	LastLevel    string             `json:"last_level" default:"" bson:"last_level,omitempty"`
 	Items        ItemRange          `json:"items" default:"" bson:"items,omitempty"`
 	Purse        Purse              `json:"purse" default:"" bson:"purse,omitempty"`
-	Loadout      Loadout            `json:"loadout" default:"" bson:"omitempty"`
-	Stats        Stats              `json:"stats" default:"" bson:"omitempty"`
-	BaseStats    Stats              `json:"base_stats" default:"" bson:"omitempty"`
-	SpellIndex   []Spell            `json:"spell_index" default:"" bson:"omitempty"`
+	Loadout      Loadout            `json:"loadout" default:"" bson:"loadout,omitempty"`
+	Stats        Stats              `json:"stats" default:"" bson:"stats,omitempty"`
+	BaseStats    Stats              `json:"base_stats" default:"" bson:"base_stats,omitempty"`
+	SpellIndex   []string           `json:"spell_index" default:"" bson:"spell_index, omitempty"`
 	Description  string             `json:"description" default:"" bson:"description, omitempty"`
 }
 type Loadout struct {
@@ -109,7 +109,7 @@ type Stats struct {
 	DarkRes      float64 `json:"darkRes" default:"0" bson:"darkRes"`
 }
 type ItemRange struct {
-	Collection []Item `json:"collection" bson:"collection"`
+	Collection []string `json:"collection" bson:"collection"`
 }
 type ShopItem struct {
 	Item_uuid uuid.UUID `json:"uuid" bson:"uuid,omitempty"`
@@ -514,6 +514,8 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 				createProfile(username, accountID, mongoClient)
 				addSpell(accountID, "Fireball", mongoClient)
 				addSpell(accountID, "Scorch", mongoClient)
+				addInventoryItem(accountID, "WizardRobe", mongoClient)
+				addInventoryItem(accountID, "WizardHat", mongoClient)
 				clientResponse = "RS#"
 			} else if !valid {
 				//Register fail
@@ -879,7 +881,7 @@ func validateUser(player *User, mongoClient *mongo.Client) bool {
 		cxt,
 		bson.M{"uuid": player.Account_id},
 		bson.D{
-			{Key: "$set", Value: bson.D{{Key: "actiValue: ve", Value: 1}}},
+			{Key: "$set", Value: bson.D{{Key: "active", Value: 1}}},
 			{Key: "$inc", Value: bson.D{{Key: "logins", Value: 1}}},
 		}, options.Update().SetUpsert(true))
 	if err != nil {
@@ -1180,7 +1182,7 @@ func createProfile(userID string, accountID uuid.UUID, mongoClient *mongo.Client
 	newProfile.Stats.Accuracy = 1
 	newProfile.Stats.Agility = 1
 	newProfile.Stats.Willpower = 1
-	newProfile.Items.Collection = make([]Item, 0)
+	newProfile.Items.Collection = make([]string, 0)
 
 	var newPurse Purse
 	newPurse.Bits = 0
@@ -1196,7 +1198,7 @@ func createProfile(userID string, accountID uuid.UUID, mongoClient *mongo.Client
 	newLoadout.Accessory_3 = "EMPTY"
 	newProfile.Loadout = newLoadout
 
-	newProfile.SpellIndex = make([]Spell, 0)
+	newProfile.SpellIndex = make([]string, 0)
 	newProfile.BaseStats = newProfile.Stats
 
 	insertResult, err := profile.InsertOne(cxt, newProfile)
@@ -1204,7 +1206,7 @@ func createProfile(userID string, accountID uuid.UUID, mongoClient *mongo.Client
 		fmt.Println(Failure(err))
 		return false
 	}
-	fmt.Println(Success("Fresh Vital created for user: ", userID, " insertID: ", insertResult.InsertedID))
+	fmt.Println(Success("Fresh profile created for user: ", userID, " insertID: ", insertResult.InsertedID))
 	return true
 }
 func getProfile(accountID uuid.UUID, mongoClient *mongo.Client) (*Profile, bool) {
@@ -1214,7 +1216,7 @@ func getProfile(accountID uuid.UUID, mongoClient *mongo.Client) (*Profile, bool)
 		panic(err)
 	}
 	database := mongoClient.Database("player")
-	profile := database.Collection("vital")
+	profile := database.Collection("profiles")
 	filterCursor, err := profile.Find(cxt, bson.M{"uuid": accountID})
 	if err != nil {
 		fmt.Println(Failure(err))
@@ -1329,13 +1331,13 @@ func addSpell(accountID uuid.UUID, spellID string, mongoClient *mongo.Client) st
 		panic(err)
 	}
 	database := mongoClient.Database("player")
-	spellIndex := database.Collection("profiles")
+	profiles := database.Collection("profiles")
 	retrievedSpell, spellFound := getSpell(spellID, mongoClient)
 	if spellFound {
 		entryArea := "spell_index"
 		match := bson.M{"uuid": accountID}
-		change := bson.M{"$push": bson.M{entryArea: retrievedSpell}}
-		updateResponse, err := spellIndex.UpdateOne(cxt, match, change)
+		change := bson.M{"$push": bson.M{entryArea: retrievedSpell.Spell_id}}
+		updateResponse, err := profiles.UpdateOne(cxt, match, change)
 		fmt.Println(Info(updateResponse))
 		if err != nil {
 			fmt.Println(Failure(err))

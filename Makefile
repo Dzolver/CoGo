@@ -14,3 +14,7 @@ test-gs:
 lint:
 	go fmt ./...
 	golangci-lint run ./...
+
+.PHONY: proto-gen
+proto-gen:
+	protoc-gen-go --go_out=. *.proto

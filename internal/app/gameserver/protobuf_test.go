@@ -1,7 +1,7 @@
 package gameserver
 
 import (
-	"CoGo/internal/pkg/models"
+	"CoGo/internal/pkg/protobuf"
 	"fmt"
 	"testing"
 
@@ -12,7 +12,7 @@ func TestProtobuf(t *testing.T) {
 	fmt.Println("Running protobuf test")
 
 	// protobuf struct
-	profile := models.Profile{}
+	profile := protobuf.Profile{}
 
 	mess, err := proto.Marshal(&profile)
 	if err != nil {
@@ -21,7 +21,7 @@ func TestProtobuf(t *testing.T) {
 
 	t.Log(mess)
 
-	profile2 := models.Profile{}
+	profile2 := protobuf.Profile{}
 
 	if err := proto.Unmarshal(mess, &profile2); err != nil {
 		t.Errorf("failed to unmarshal proto: %v", err)

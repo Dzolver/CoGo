@@ -20,3 +20,6 @@ lint:
 build-docker:
 	docker build -t validation .
 
+.PHONY: generate-protobuf
+generate-protobuf:
+	protoc --go_out=. gameobjects.proto

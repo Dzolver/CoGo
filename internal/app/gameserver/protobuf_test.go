@@ -27,5 +27,5 @@ func TestProtobuf(t *testing.T) {
 		t.Errorf("failed to unmarshal proto: %v", err)
 	}
 
-	t.Log(profile2)
+	t.Log(profile2.String())
 }

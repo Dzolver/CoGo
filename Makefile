@@ -2,12 +2,13 @@
 run-gs:
 	go run cmd/gameserver/main.go
 
-.PHONY: build-gs
-build-gs:
+.PHONY: build
+build: test
 	go build -o bin/gameserver cmd/gameserver/main.go 
+	go build -o bin/validation cmd/validation/main.go
 
-.PHONY: test-gs
-test-gs:
+.PHONY: test
+test:
 	go test -v ./...
 
 .PHONY: lint
@@ -15,6 +16,7 @@ lint:
 	go fmt ./...
 	golangci-lint run ./...
 
-.PHONY: proto-gen
-proto-gen:
-	protoc-gen-go --go_out=. *.proto
+.PHONY: build-docker
+build-docker:
+	docker build -t validation .
+

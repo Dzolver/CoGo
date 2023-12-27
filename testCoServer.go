@@ -8,7 +8,6 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -245,9 +244,10 @@ var PACKET_SIZE = 10000
 var wg sync.WaitGroup
 var ALLshopkeepers = make(map[string]ShopKeeper)
 var playerPacketCache = make(map[uuid.UUID]PlayerPacketCache)
-var MASTER_ITEM_TABLE = ItemRange{}
-var MASTER_SPELL_TABLE []Spell
-var MASTER_MONSTER_TABLE []Monster
+var MASTER_ITEM_TABLE = make(map[string]Item)
+var MASTER_SPELL_TABLE = make(map[string]Spell)
+var MASTER_MONSTER_TABLE = make(map[string]Monster)
+var MASTER_LEVEL_TABLE = make(map[string]Level)
 
 var sessions Sessions
 var (
@@ -257,6 +257,7 @@ var (
 	Fata           = Red
 	Success        = Green
 	Failure        = Yellow
+	Internal       = Mint
 )
 var (
 	Black   = Color("\033[1;30m%s\033[0m")
@@ -267,6 +268,7 @@ var (
 	Magenta = Color("\033[1;35m%s\033[0m")
 	Teal    = Color("\033[1;36m%s\033[0m")
 	White   = Color("\033[1;37m%s\033[0m")
+	Mint    = Color("\033[1;158m%s\033[0m")
 )
 
 func Color(colorString string) func(...interface{}) string {
@@ -362,7 +364,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			lastPosition.Position_x, _ = strconv.ParseFloat(x, 64)
 			lastPosition.Position_y, _ = strconv.ParseFloat(y, 64)
 			lastPosition.Position_z, _ = strconv.ParseFloat(z, 64)
-			updateUserLastPosition(target_uuid, lastPosition, mongoClient)
+			updateUserLastPosition(target_uuid, &lastPosition, mongoClient)
 		}
 		//Inventory add
 		if packetCode == "IA#" {
@@ -398,7 +400,7 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 			if valid {
 				//Login success
 				packetCode = "LS#"
-				var LSP LoginSecretPacket
+				/*var LSP LoginSecretPacket
 				User, _ := getUser(username, mongoClient)
 				Profile, _ := getProfile(User.Account_id, mongoClient)
 				LSP.User = User
@@ -413,14 +415,15 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 				Residents := getNPCs(Level.Residents, mongoClient)
 				FLD.Level = Level
 				FLD.Residents = Residents
-
 				FRD.LevelData = FLD
-
 				LSP.Region = FRD
 
 				contentJSON, _ := json.Marshal(LSP)
 				packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "LSP", contentJSON)
-				chainWriteResponse(User.Account_id, requestIDSTR, packet, byteLimiter, clientConnection, false)
+				chainWriteResponse(User.Account_id, requestIDSTR, packet, byteLimiter, clientConnection, false)*/
+				contentJSON, _ := json.Marshal(getLevelFromCache("00001"))
+				packet := createMultiDeliveryPacket(requestIDSTR, packetCode, "LSP", contentJSON)
+				chainWriteResponse(uuid.New(), requestIDSTR, packet, byteLimiter, clientConnection, false)
 			} else if !valid {
 				//Login fail
 				packetCode = "LF#"
@@ -601,6 +604,306 @@ func handleTCPConnection(clientConnection net.Conn, cxt context.Context, mongoCl
 	}
 	clientConnection.Close()
 }
+
+// func toProtoBuf(inputStruct interface{}) proto.Message {
+// 	switch s := inputStruct.(type) {
+// 	case User:
+// 		return &models.User{
+// 			ObjectID: s.ObjectID.String(),
+// 			Uuid:     s.Account_id.String(),
+// 			UserId:   s.User_id,
+// 			Password: s.Password,
+// 			Active:   int32(s.Active),
+// 			Logins:   int32(s.Logins),
+// 		}
+
+// 	case Profile:
+// 		var items ItemRange = s.Items
+
+// 		return &models.Profile{
+// 			ObjectID:   s.ObjectID.String(),
+// 			Uuid:       s.Account_id.String(),
+// 			Name:       s.Name,
+// 			Level:      int32(s.Level),
+// 			Age:        int32(s.Age),
+// 			Title:      s.Title,
+// 			CurrentExp: float32(s.Current_EXP),
+// 			TotalExp:   float32(s.Total_EXP),
+// 			MaxExp:     float32(s.Max_EXP),
+// 			RaceId:     s.Race_id,
+// 			RaceName:   s.Race_name,
+// 			ClassId:    s.Class_id,
+// 			ClassName:  s.Class_name,
+// 			LastPosition: &models.Position{
+// 				PosX: float32(s.LastPosition.Position_x),
+// 				PosY: float32(s.LastPosition.Position_y),
+// 				PosZ: float32(s.LastPosition.Position_z),
+// 			},
+// 			LastRegion:  s.LastRegion,
+// 			LastLevel:   s.LastLevel,
+// 			Items:       toProtoBuf(s.Items),
+// 			Purse:       &models.Purse{},
+// 			Loadout:     &models.Loadout{},
+// 			Stats:       &models.Stats{},
+// 			BaseStats:   &models.Stats{},
+// 			SpellIndex:  []string{},
+// 			Description: "",
+// 		}
+
+// 	case Loadout:
+// 		return &models.Loadout{
+// 			head:        s.Head,
+// 			body:        s.Body,
+// 			feet:        s.Feet,
+// 			weapon:      s.Weapon,
+// 			accessory_1: s.Accessory_1,
+// 			accessory_2: s.Accessory_2,
+// 			accessory_3: s.Accessory_3,
+// 		}
+
+// 	case Purse:
+// 		return &models.Purse{
+// 			bits: s.Bits,
+// 		}
+
+// 	case Item:
+// 		return &models.Item{
+// 			ObjectID:    s.ObjectID.String(),
+// 			ItemId:      s.Item_id,
+// 			ItemType:    s.Item_type,
+// 			ItemSubtype: s.Item_subtype,
+// 			Entity:      s.Entity,
+// 			Name:        s.Name,
+// 			Num:         s.Num,
+// 			Description: s.Description,
+// 			Stats:       toProtoBuf(s.Stats),
+// 			BaseValue:   0,
+// 		}
+
+// 	case Stats:
+// 		return &models.Stats{
+// 			Strength:     float32(s.Strength),
+// 			Intelligence: float32(s.Intelligence),
+// 			Dexterity:    float32(s.Dexterity),
+// 			Charisma:     float32(s.Charisma),
+// 			Luck:         float32(s.Luck),
+// 			Health:       float32(s.Health),
+// 			Mana:         float32(s.Mana),
+// 			Attack:       float32(s.Attack),
+// 			MagicAttack:  float32(s.MagicAttack),
+// 			Defense:      float32(s.Defense),
+// 			MagicDefense: float32(s.MagicDefense),
+// 			Armor:        float32(s.Armor),
+// 			Evasion:      float32(s.Evasion),
+// 			Accuracy:     float32(s.Accuracy),
+// 			Agility:      float32(s.Agility),
+// 			FireRes:      float32(s.FireRes),
+// 			WaterRes:     float32(s.WaterRes),
+// 			EarthRes:     float32(s.EarthRes),
+// 			WindRes:      float32(s.WindRes),
+// 			IceRes:       float32(s.IceRes),
+// 			EnergyRes:    float32(s.EnergyRes),
+// 			NatureRes:    float32(s.NatureRes),
+// 			PoisonRes:    float32(s.PoisonRes),
+// 			MetalRes:     float32(s.MetalRes),
+// 			LightRes:     float32(s.LightRes),
+// 			DarkRes:      float32(s.DarkRes),
+// 		}
+
+// 	case ItemRange:
+// 		return &models.ItemRange{
+// 			Collection: s.Collection,
+// 		}
+
+// 	case ShopItem:
+// 		return &models.ShopItem{
+// 			Uuid:     s.Item_uuid.String(),
+// 			ShopItem: toProtoBuf(s.Item),
+// 			Price:    s.Price,
+// 		}
+
+// 	case Spell:
+// 		return &models.Spell{
+// 			objectID:       s.ObjectID,
+// 			spell_id:       s.Spell_id,
+// 			name:           s.Name,
+// 			mana_cost:      s.Mana_cost,
+// 			spell_type:     s.Spell_type,
+// 			targetable:     s.Targetable,
+// 			spell:          s.Spell,
+// 			damage:         s.Damage,
+// 			element:        s.Element,
+// 			level:          s.Level,
+// 			spell_duration: s.Spell_duration,
+// 			init_block:     s.Init_block,
+// 			block_count:    s.Block_count,
+// 			effect:         toProtoBuf(s.Effect),
+// 		}
+
+// 	case Effect:
+// 		return &models.Effect{
+// 			name:             s.Name,
+// 			effect_id:        s.Effect_id,
+// 			element:          s.Element,
+// 			effect_type:      s.Effect_type,
+// 			buff_element:     s.Buff_element,
+// 			debuff_element:   s.Debuff_element,
+// 			damage_per_cycle: s.Damage_per_cycle,
+// 			lifetime:         s.Lifetime,
+// 			ticks_left:       s.Ticks_left,
+// 			scalar:           s.Scalar,
+// 			description:      s.Description,
+// 			effector:         s.Effector,
+// 		}
+
+// 	case Client:
+// 		return &models.Client{
+// 			uuid:           s.Account_id,
+// 			connect_time:   s.ConnectTime,
+// 			udp_addr:       s.UDPAddress,
+// 			broadcast_addr: s.BroadcastAddress,
+// 			position:       toProtoBuf(s.Position),
+// 		}
+
+// 	case Position:
+// 		return &models.Position{
+// 			pos_x: s.Position_x,
+// 			pos_y: s.Position_y,
+// 			pos_z: s.Position_z,
+// 		}
+
+// 	case BattlePacket:
+// 		var protoMonsters []*models.Monster
+// 		for _, monster := range *s.Monsters {
+// 			protoMonster := toProtoBuf(monster)
+// 			protoMonsters = append(protoMonsters, protoMonster)
+// 		}
+// 		return &models.BattlePacket{
+// 			battle_id:        s.BattleID,
+// 			player_profile:   toProtoBuf(s.PlayerProfile),
+// 			monsters:         protoMonsters,
+// 			monster_quantity: s.MonsterQuantity,
+// 		}
+
+// 	case LoginSecretPacket:
+// 		return &models.LoginSecretPacket{
+// 			user_data:      toProtoBuf(s.User),
+// 			player_profile: toProtoBuf(s.Profile),
+// 			region_data:    toProtoBuf(s.Region),
+// 		}
+
+// 	case Region:
+// 		return &models.Region{
+// 			objectID:    s.ObjectID,
+// 			region_id:   s.RegionID,
+// 			region_name: s.RegionName,
+// 			levels:      s.Levels,
+// 		}
+
+// 	case Level:
+// 		return &models.Level{
+// 			objectID:   s.ObjectID,
+// 			level_id:   s.LevelID,
+// 			level_name: s.LevelName,
+// 			zip:        s.ZIP,
+// 			monsters:   s.Monsters,
+// 			residents:  s.Residents,
+// 		}
+
+// 	case Resident:
+// 		return &models.Resident{
+// 			objectID: s.ObjectID,
+// 			npc_id:   s.NpcID,
+// 			NpcName:  s.NpcName,
+// 			dialogue: s.Dialogue,
+// 		}
+
+// 	case ShopKeeper:
+// 		var protoCatalogue []*models.ShopItem
+// 		for _, item := range *&s.Catalogue {
+// 			protoItem := toProtoBuf(item)
+// 			protoCatalogue = append(protoCatalogue, protoItem)
+// 		}
+// 		return &models.ShopKeeper{
+// 			objectID:  s.ObjectID,
+// 			npc_id:    s.NpcID,
+// 			catalogue: protoCatalogue,
+// 			purse:     toProtoBuf(s.Purse),
+// 		}
+
+// 	case Monster:
+// 		var protoActions []*models.Spell
+// 		for _, action := range *s.Actions {
+// 			protoAction := toProtoBuf(action)
+// 			protoActions = append(protoActions, protoAction)
+// 		}
+// 		return &models.Monster{
+// 			objectID:        s.ObjectID,
+// 			mob_id:          s.MobID,
+// 			monster_type:    s.MonsterType,
+// 			gold_gain:       s.GoldGain,
+// 			experience_gain: s.ExperienceGain,
+// 			profile:         toProtoBuf(s.profile),
+// 			stats:           toProtoBuf(s.Stats),
+// 			actions:         protoActions,
+// 			element:         s.Element,
+// 			regions:         s.Regions,
+// 		}
+
+// 	case RegionData:
+// 		return &models.RegionData{
+// 			region:     toProtoBuf(s.Region),
+// 			level_data: toProtoBuf(s.LevelData),
+// 		}
+
+// 	case LevelData:
+// 		var protoResidents []*models.Resident
+// 		for _, resident := range *s.Residents {
+// 			protoResident := toProtoBuf(resident)
+// 			protoResidents = append(protoResidents, protoResident)
+// 		}
+// 		return &models.LevelData{
+// 			level:     toProtoBuf(s.Level),
+// 			residents: protoResidents,
+// 		}
+
+// 	case BattleSession:
+// 		var protoMonsters []*models.Monster
+// 		for _, monster := range *s.Monsters {
+// 			protoMonster := toProtoBuf(monster)
+// 			protoMonsters = append(protoMonsters, protoMonster)
+// 		}
+// 		return &models.Sessions{
+// 			battle_id:     s.BattleID,
+// 			status:        s.Status,
+// 			monsters:      protoMonsters,
+// 			reward_matrix: s.RewardMatrix,
+// 			reward:        toProtoBuf(reward),
+// 		}
+
+// 	case Reward:
+// 		return &models.Sessions{
+// 			gold:      s.Gold,
+// 			exp:       s.Exp,
+// 			total_exp: s.TotalExp,
+// 		}
+
+// 	case Packet:
+// 		return &models.Sessions{
+// 			uuid:         s.PacketID,
+// 			packet_code:  s.PacketCode,
+// 			chain:        s.Chain,
+// 			service_type: s.ServiceType,
+// 			content:      s.Content,
+// 		}
+
+// 	default:
+// 		fmt.Println("Unsupported protobuf message type")
+// 		return nil
+
+// 	}
+// }
+
 func sayHiToClient() string {
 	return "Hello Client - FROM SERVER"
 }
@@ -739,6 +1042,7 @@ func chainWriteResponse(accountID uuid.UUID, requestID string, packet Packet, by
 	fmt.Println(Info("Size of remaining ", packet.ServiceType, " in bytes : ", len(totalByteData)%byteLimiter))
 	fmt.Println(Info("Size of ", packet.ServiceType, " partitions : ", dataPartitions))
 }
+
 func createBattle(monsters *[]Monster, quantity int) *BattleSession {
 	var battle BattleSession
 	battle.BattleID = uuid.New()
@@ -891,44 +1195,46 @@ func validateUser(player *User, mongoClient *mongo.Client) bool {
 	}
 	return true
 }
-func createShopKeeper(npcID string, mongoClient *mongo.Client) {
-	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
-		panic(err)
-	}
-	database := mongoClient.Database("world")
-	shopkeepers := database.Collection("shopkeepers")
-	var freshShopKeeper ShopKeeper
-	freshShopKeeper.ObjectID = primitive.NewObjectID()
-	freshShopKeeper.NpcID = npcID
-	freshShopKeeper.Catalogue = make([]ShopItem, 0)
-	var freshPurse Purse
-	freshPurse.Bits = 0
-	freshShopKeeper.Purse = freshPurse
-	createResult, err := shopkeepers.InsertOne(cxt, freshShopKeeper)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println(Success("New shopkeeper added to db : ", createResult.InsertedID))
-}
-func getShopKeepersForServer(mongoClient *mongo.Client) {
-	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
-		panic(err)
-	}
-	database := mongoClient.Database("world")
-	shopkeepers := database.Collection("shopkeepers")
-	filterCursor, err := shopkeepers.Find(cxt, bson.D{})
-	var itemResult []ShopKeeper
-	if err = filterCursor.All(cxt, &itemResult); err != nil {
-		log.Fatal(err)
-	}
-	for _, shopkeeper := range itemResult {
-		ALLshopkeepers[shopkeeper.NpcID] = shopkeeper
-	}
-}
+
+//	func createShopKeeper(npcID string, mongoClient *mongo.Client) {
+//		cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+//		defer cancel()
+//		if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+//			panic(err)
+//		}
+//		database := mongoClient.Database("world")
+//		shopkeepers := database.Collection("shopkeepers")
+//		var freshShopKeeper models.ShopKeeper
+//		freshShopKeeper.ObjectID = primitive.NewObjectID().String()
+//		freshShopKeeper.NpcId = npcID
+//		freshShopKeeper.Catalogue = make([]*models.ShopItem)
+//		var freshPurse Purse
+//		freshPurse.Bits = 0
+//		freshShopKeeper.Purse = freshPurse
+//		createResult, err := shopkeepers.InsertOne(cxt, freshShopKeeper)
+//		if err != nil {
+//			log.Fatal(err)
+//		}
+//		fmt.Println(Success("New shopkeeper added to db : ", createResult.InsertedID))
+//	}
+//
+//	func getShopKeepersForServer(mongoClient *mongo.Client) {
+//		cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+//		defer cancel()
+//		if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+//			panic(err)
+//		}
+//		database := mongoClient.Database("world")
+//		shopkeepers := database.Collection("shopkeepers")
+//		filterCursor, err := shopkeepers.Find(cxt, bson.D{})
+//		var itemResult []models.ShopKeeper
+//		if err = filterCursor.All(cxt, &itemResult); err != nil {
+//			log.Fatal(err)
+//		}
+//		for _, shopkeeper := range itemResult {
+//			ALLshopkeepers[shopkeeper.NpcId] = shopkeeper
+//		}
+//	}
 func addCatalogueItem(itemID string, npcID string, price float64, mongoClient *mongo.Client) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -939,7 +1245,7 @@ func addCatalogueItem(itemID string, npcID string, price float64, mongoClient *m
 	if foundItem {
 		var freshShopItem ShopItem
 		freshShopItem.Item_uuid = uuid.New()
-		freshShopItem.Item = *catalogueItem
+		freshShopItem.Item = catalogueItem
 		freshShopItem.Price = price
 		database := mongoClient.Database("world")
 		shopkeepers := database.Collection("shopkeepers")
@@ -1127,7 +1433,7 @@ func getUser(userID string, mongoClient *mongo.Client) (*User, bool) {
 	var dummyUser User
 	return &dummyUser, false
 }
-func updateUserLastPosition(target_uuid uuid.UUID, lastPosition Position, mongoClient *mongo.Client) bool {
+func updateUserLastPosition(target_uuid uuid.UUID, lastPosition *Position, mongoClient *mongo.Client) bool {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -1156,6 +1462,7 @@ func createProfile(userID string, accountID uuid.UUID, mongoClient *mongo.Client
 	profile := database.Collection("profiles")
 
 	var newProfile Profile
+	var defaultPosition Position
 	newProfile.ObjectID = primitive.NewObjectID()
 	newProfile.Account_id = accountID
 	newProfile.Name = userID
@@ -1169,7 +1476,7 @@ func createProfile(userID string, accountID uuid.UUID, mongoClient *mongo.Client
 	newProfile.Race_name = "Human"
 	newProfile.Class_id = "stranger"
 	newProfile.Class_name = "Stranger"
-	newProfile.LastPosition = Position{}
+	newProfile.LastPosition = defaultPosition
 	newProfile.LastLevel = "00001"
 	newProfile.LastRegion = "001"
 
@@ -1181,7 +1488,6 @@ func createProfile(userID string, accountID uuid.UUID, mongoClient *mongo.Client
 	newProfile.Stats.MagicDefense = 1
 	newProfile.Stats.Accuracy = 1
 	newProfile.Stats.Agility = 1
-	newProfile.Stats.Willpower = 1
 	newProfile.Items.Collection = make([]string, 0)
 
 	var newPurse Purse
@@ -1238,28 +1544,28 @@ func updateProfile_EXP(accountID uuid.UUID, streamed_exp float64, mongoClient *m
 		panic(err)
 	}
 	profile, profileFound := getProfile(accountID, mongoClient)
-	newTotalExp := profile.Total_EXP + streamed_exp
+	newTotalExp := float64(profile.Total_EXP) + streamed_exp
 	if profileFound {
 		fmt.Println(Success("Found player profile to update"))
 		database := mongoClient.Database("player")
 		profiles := database.Collection("profiles")
 		match := bson.M{"uuid": accountID}
-		totalEXP := profile.Current_EXP + streamed_exp
+		totalEXP := float64(profile.Current_EXP) + streamed_exp
 		fmt.Println(Info(totalEXP, " (TotalEXP) = ", profile.Current_EXP, " (current exp) + ", streamed_exp, " (streamed exp)"))
-		if totalEXP >= profile.Max_EXP {
+		if totalEXP >= float64(profile.Max_EXP) {
 			bufferEXP := 0.0
 			levelUpperLimit := 0
 			levelUpperLimitEXP := profile.Max_EXP
-			bufferEXP = profile.Max_EXP
+			bufferEXP = float64(profile.Max_EXP)
 			if totalEXP > bufferEXP {
 				for totalEXP > bufferEXP {
 					levelUpperLimit++
 					levelUpperLimitEXP += 50.0
-					bufferEXP += profile.Max_EXP + float64(levelUpperLimit*50.0)
+					bufferEXP += float64(profile.Max_EXP) + float64(levelUpperLimit*50.0)
 				}
 			}
-			newCurrentEXP := levelUpperLimitEXP - (bufferEXP - totalEXP)
-			newLevel := profile.Level + levelUpperLimit
+			newCurrentEXP := float64(levelUpperLimitEXP) - (bufferEXP - totalEXP)
+			newLevel := int(profile.Level) + levelUpperLimit
 			newMaxEXP := levelUpperLimitEXP
 			change := bson.D{
 				{Key: "$set", Value: bson.D{{Key: "profile.level", Value: newLevel}, {Key: "profile.current_exp", Value: newCurrentEXP}, {Key: "profile.max_exp", Value: newMaxEXP}, {Key: "profile.total_exp", Value: newTotalExp}}},
@@ -1270,7 +1576,7 @@ func updateProfile_EXP(accountID uuid.UUID, streamed_exp float64, mongoClient *m
 				return 0
 			}
 			return newTotalExp
-		} else if totalEXP < profile.Max_EXP {
+		} else if totalEXP < float64(profile.Max_EXP) {
 			newCurrentEXP := totalEXP
 			change := bson.D{
 				{Key: "$set", Value: bson.D{{Key: "profile.current_exp", Value: newCurrentEXP}, {Key: "profile.total_exp", Value: newTotalExp}}},
@@ -1295,7 +1601,7 @@ func addBits(accountID uuid.UUID, streamed_bits float64, add bool, mongoClient *
 	profile, profileFound := getProfile(accountID, mongoClient)
 	newTotalBits := 0.0
 	if add {
-		newTotalBits = profile.Purse.Bits + streamed_bits
+		newTotalBits = float64(profile.Purse.Bits) + streamed_bits
 	} else {
 		newTotalBits = streamed_bits
 	}
@@ -1315,14 +1621,14 @@ func addBits(accountID uuid.UUID, streamed_bits float64, add bool, mongoClient *
 	}
 	return newTotalBits
 }
-func getBits(accountID uuid.UUID, mongoClient *mongo.Client) float64 {
+func getBits(accountID uuid.UUID, mongoClient *mongo.Client) float32 {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
 		panic(err)
 	}
 	profile, _ := getProfile(accountID, mongoClient)
-	return profile.Purse.Bits
+	return float32(profile.Purse.Bits)
 }
 func addSpell(accountID uuid.UUID, spellID string, mongoClient *mongo.Client) string {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1364,15 +1670,12 @@ func getSpell(spellID string, mongoClient *mongo.Client) (*Spell, bool) {
 	if err = filterCursor.All(cxt, &spellResult); err != nil {
 		log.Fatal(err)
 	}
-	if len(spellResult) == 0 {
-		fmt.Println(Warn("Item not found!"))
-		emptyItem := new(Spell)
-		return emptyItem, false
+	if len(spellResult) == 1 {
+		return &spellResult[0], true
 	}
-	retrievedItem := spellResult[0]
-	return &retrievedItem, true
+	return &spellResult[0], true
 }
-func getItem(itemID string, mongoClient *mongo.Client) (*Item, bool) {
+func getItem(itemID string, mongoClient *mongo.Client) (Item, bool) {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -1392,11 +1695,12 @@ func getItem(itemID string, mongoClient *mongo.Client) (*Item, bool) {
 	if len(itemResult) == 0 {
 		fmt.Println(Warn("Item not found!"))
 		emptyItem := new(Item)
-		return emptyItem, false
+		return *emptyItem, false
+	} else if len(itemResult) == 0 {
+		fmt.Println(Info("Item retrieved : ", itemResult[0].Item_id))
+		return itemResult[0], true
 	}
-	fmt.Println(Info("Item retrieved : ", itemResult[0].Item_id))
-	retrievedItem := itemResult[0]
-	return &retrievedItem, true
+	return itemResult[0], true
 }
 func equipItem(accountID uuid.UUID, itemID string, mongoClient *mongo.Client) string {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1446,7 +1750,7 @@ func unequipItem(accountID uuid.UUID, itemID string, mongoClient *mongo.Client) 
 	}
 	return "UNEQUIP$0"
 }
-func updateStats(accountID uuid.UUID, item *Item, operation string, mongoClient *mongo.Client) *Profile {
+func updateStats(accountID uuid.UUID, item Item, operation string, mongoClient *mongo.Client) *Profile {
 	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
@@ -1456,7 +1760,7 @@ func updateStats(accountID uuid.UUID, item *Item, operation string, mongoClient 
 	profiles := database.Collection("profiles")
 	profile, _ := getProfile(accountID, mongoClient)
 	originalStats := profile.Stats
-	updatedStats := updateStatsByItem(&originalStats, item, operation)
+	updatedStats := updateStatsByItem(&originalStats, &item, operation)
 	profile.Stats = *updatedStats
 	match := bson.M{"uuid": accountID}
 	change := bson.M{"$set": bson.D{{Key: "stats", Value: profile.Stats}}}
@@ -1511,23 +1815,23 @@ func performTrade(accountID uuid.UUID, npcID string, playerBasket []Item, shopBa
 			}
 		}
 	}
-	pTradePower := pBasketValue + playerBits
+	pTradePower := pBasketValue + float64(playerBits)
 	sTradePower := sBasketValue + shopkeeperBits
 	if sTradePower > pTradePower && sTradePower >= sBasketValue {
 		//buy player items first and then sell to player
 		//if shop can afford player basket
 		if sTradePower >= pBasketValue && pBasketValue > 0 {
 			shopkeeperBits -= pBasketValue
-			playerBits += pBasketValue
+			playerBits += float32(pBasketValue)
 			pBasketValue = 0
 			shopkeeperBits += sBasketValue
-			playerBits -= sBasketValue
+			playerBits -= float32(sBasketValue)
 			sBasketValue = 0
 			//update shopkeepers and player
 			shopkeeper.Purse.Bits = shopkeeperBits
 			ALLshopkeepers[npcID] = shopkeeper
 			//create setBits function or modify addBits() with extra param
-			addBits(accountID, playerBits, false, mongoClient)
+			addBits(accountID, float64(playerBits), false, mongoClient)
 			return true
 		} else {
 			return false
@@ -1537,16 +1841,16 @@ func performTrade(accountID uuid.UUID, npcID string, playerBasket []Item, shopBa
 		//if player can afford shopkeeper basket
 		if pTradePower >= sBasketValue && sBasketValue > 0 {
 			shopkeeperBits += sBasketValue
-			playerBits -= sBasketValue
+			playerBits -= float32(sBasketValue)
 			sBasketValue = 0
 			shopkeeperBits -= pBasketValue
-			playerBits += pBasketValue
+			playerBits += float32(pBasketValue)
 			pBasketValue = 0
 			//update shopkeepers and player
 			shopkeeper.Purse.Bits = shopkeeperBits
 			ALLshopkeepers[npcID] = shopkeeper
 			//create setBits function or modify addBits() with extra param
-			addBits(accountID, playerBits, false, mongoClient)
+			addBits(accountID, float64(playerBits), false, mongoClient)
 			return true
 		} else {
 			return false
@@ -1577,7 +1881,103 @@ func removeInventoryItem(accountID uuid.UUID, itemID string, mongoClient *mongo.
 	}
 	return "Item does not exist!"
 }
-
+func getItemsGlobalAndCache(mongoClient *mongo.Client) []Item {
+	//get all items from world/items
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("world")
+	items := database.Collection("items")
+	//filterCursor, err := regions.Find(cxt, bson.M{"regionID": regionID})
+	filterCursor, err := items.Find(cxt, bson.D{})
+	if err != nil {
+		fmt.Println(Failure(err))
+		panic(err)
+	}
+	var filterResult []Item
+	if err = filterCursor.All(cxt, &filterResult); err != nil {
+		log.Fatal(err)
+	}
+	//cache the items to a global map
+	for _, item := range filterResult {
+		MASTER_ITEM_TABLE[item.Item_id] = item
+	}
+	return filterResult
+}
+func getSpellsGlobalAndCache(mongoClient *mongo.Client) []Spell {
+	//get all items from world/items
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("world")
+	items := database.Collection("spells")
+	filterCursor, err := items.Find(cxt, bson.D{})
+	if err != nil {
+		fmt.Println(Failure(err))
+		panic(err)
+	}
+	var filterResult []Spell
+	if err = filterCursor.All(cxt, &filterResult); err != nil {
+		log.Fatal(err)
+	}
+	//cache the items to a global map
+	for _, spell := range filterResult {
+		MASTER_SPELL_TABLE[spell.Spell_id] = spell
+	}
+	return filterResult
+}
+func getMonstersGlobalAndCache(mongoClient *mongo.Client) []Monster {
+	//get all items from world/items
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("world")
+	items := database.Collection("monsters")
+	filterCursor, err := items.Find(cxt, bson.D{})
+	if err != nil {
+		fmt.Println(Failure(err))
+		panic(err)
+	}
+	var filterResult []Monster
+	if err = filterCursor.All(cxt, &filterResult); err != nil {
+		log.Fatal(err)
+	}
+	//cache the items to a global map
+	for _, monster := range filterResult {
+		MASTER_MONSTER_TABLE[monster.MobID] = monster
+	}
+	return filterResult
+}
+func getLevelsGlobalAndCache(mongoClient *mongo.Client) []Level {
+	//get all items from world/items
+	cxt, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := mongoClient.Ping(cxt, readpref.Primary()); err != nil {
+		panic(err)
+	}
+	database := mongoClient.Database("world")
+	items := database.Collection("levels")
+	filterCursor, err := items.Find(cxt, bson.D{})
+	if err != nil {
+		fmt.Println(Failure(err))
+		panic(err)
+	}
+	var filterResult []Level
+	if err = filterCursor.All(cxt, &filterResult); err != nil {
+		log.Fatal(err)
+	}
+	//cache the items to a global map
+	for _, level := range filterResult {
+		MASTER_LEVEL_TABLE[level.LevelID] = level
+	}
+	return filterResult
+}
 func updateStatsByItem(originalStats *Stats, item *Item, operation string) *Stats {
 	op := 0.0
 	if operation == "add" {
@@ -1600,7 +2000,6 @@ func updateStatsByItem(originalStats *Stats, item *Item, operation string) *Stat
 	originalStats.Evasion += (op * item.Stats.Evasion)
 	originalStats.Accuracy += (op * item.Stats.Accuracy)
 	originalStats.Agility += (op * item.Stats.Agility)
-	originalStats.Willpower += (op * item.Stats.Willpower)
 	originalStats.FireRes += (op * item.Stats.FireRes)
 	originalStats.WaterRes += (op * item.Stats.WaterRes)
 	originalStats.EarthRes += (op * item.Stats.EarthRes)
@@ -1615,17 +2014,16 @@ func updateStatsByItem(originalStats *Stats, item *Item, operation string) *Stat
 
 	return originalStats
 }
+func getSpellFromCache(spell_id string) Spell {
+	fmt.Println(Internal("Spell retrieved from cache!"))
+	return MASTER_SPELL_TABLE[spell_id]
+}
+func getLevelFromCache(level_id string) Level {
+	fmt.Println(Internal("Level retrieved from cache!"))
+	return MASTER_LEVEL_TABLE[level_id]
+}
 
 func main() {
-	//createPorts()
-	arguments := os.Args
-	if len(arguments) == 1 {
-		fmt.Println(Warn("Please provide port"))
-		return
-	} else {
-		fmt.Println(Success("SERVER RUNNING on Port " + arguments[1] + " !"))
-	}
-
 	//mongoDB specs
 	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
 	opts := options.Client().ApplyURI("mongodb+srv://admin:w1583069@cluster0.8acnf.mongodb.net/?retryWrites=true&w=majority").SetServerAPIOptions(serverAPI)
@@ -1651,18 +2049,23 @@ func main() {
 	// addInventoryItem("asd", "WizardHat", mongoClient)
 	// addInventoryItem("asd", "WizardHat", mongoClient)
 
-	getShopKeepersForServer(mongoClient)
+	//getShopKeepersForServer(mongoClient)
+	// get all global spell and item data and cache it during server runtime
+	getItemsGlobalAndCache(mongoClient)
+	getSpellsGlobalAndCache(mongoClient)
+	getMonstersGlobalAndCache(mongoClient)
+	getLevelsGlobalAndCache(mongoClient)
 	//disconnect mongoDB client on return
 	defer func() {
 		if err = mongoClient.Disconnect(cxt); err != nil {
 			panic(err)
 		}
 	}()
-	PORT := ":" + arguments[1]
 	sessions.Battles = make(map[uuid.UUID]BattleSession)
 	// add to sync.WaitGroup
+	fmt.Println(Success("SERVER RUNNING on Port 20001"))
 	wg.Add(1)
-	go tcpListener(PORT, cxt, mongoClient)
+	go tcpListener(":20001", cxt, mongoClient)
 	wg.Add(2)
 	go udpListener(":26950", cxt, mongoClient)
 	wg.Wait()

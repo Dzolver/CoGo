@@ -1,0 +1,222 @@
+syntax = "proto3";
+package main;
+
+option go_package = "/models";
+
+message User {
+	string objectID = 1; 	// @gotags: bson:"_id, omitempty"
+	string uuid = 2; 		// @gotags: bson:"uuid, omitempty"
+	string user_id = 3; 	// @gotags: default:"" bson:"user_id, omitempty"
+	string password = 4; 	// @gotags: default:"" bson:"password, omitempty"
+	int32 active = 5; 		// @gotags: default:"" bson:"active, omitempty"
+	int32 logins = 6; 		// @gotags: default:"" bson:"logins, omitempty"
+}
+message Profile {
+	string objectID = 1; 				// @gotags: bson:"_id, omitempty" 
+	string uuid = 2; 					// @gotags: bson:"uuid, omitempty"
+	string name = 3; 					// @gotags: default:"" bson:"name, omitempty"
+	int32 level = 4; 					// @gotags: default:"" bson:"level, omitempty"
+	int32 age = 5; 						// @gotags: default:"" bson:"age, omitempty"
+	string title = 6; 					// @gotags: default:"" bson:"title, omitempty"
+	float current_exp = 7; 				// @gotags: default:"" bson:"current_exp, omitempty"
+	float total_exp = 8; 				// @gotags: default:"" bson:"total_exp, omitempty"
+	float max_exp = 9; 					// @gotags: default:"" bson:"max_exp, omitempty"
+	string race_id = 10; 				// @gotags: default:"" bson:"race_id, omitempty"
+	string race_name = 11; 				// @gotags: default:"" bson:"race_name, omitempty"
+	string class_id = 12; 				// @gotags: default:"" bson:"class_id, omitempty"
+	string class_name = 13; 			// @gotags: default:"" bson:"class_name, omitempty"
+	Position last_position = 14; 		// @gotags: default:"" bson:"last_position, omitempty"
+	string last_region = 15; 			// @gotags: default:"" bson:"last_region, omitempty"
+	string last_level = 16; 			// @gotags: default:"" bson:"last_level, omitempty"
+	ItemRange items = 17; 				// @gotags: default:"" bson:"items, omitempty"
+	Purse purse = 18; 					// @gotags: default:"" bson:"purse, omitempty"
+	Loadout loadout = 19; 				// @gotags: default:"" bson:"loadout, omitempty"
+	Stats stats = 20; 					// @gotags: default:"" bson:"stats, omitempty"
+	Stats base_stats = 21; 				// @gotags: default:"" bson:"base_stats, omitempty"
+	repeated string spell_index = 22; 	// @gotags: default:"" bson:"spell_index, omitempty"
+	string description = 23; 			// @gotags: default:"" bson:"description, omitempty"
+}
+message Loadout {
+	string head = 1; 		// @gotags: bson:"head, omitempty"
+	string body = 2; 		// @gotags: bson:"body, omitempty"
+	string feet = 3; 		// @gotags: bson:"feet, omitempty"
+	string weapon = 4; 		// @gotags: bson:"weapon, omitempty"
+	string accessory_1 = 5; // @gotags: bson:"accessory_1, omitempty"
+	string accessory_2 = 6; // @gotags: bson:"accessory_2, omitempty"
+	string accessory_3 = 7; // @gotags: bson:"accessory_3, omitempty"
+}
+message Purse {
+	float bits = 1; // @gotags: default:"0" bson:"bits, omitempty"
+}
+message Item {
+	string objectID = 1;		// @gotags: bson:"_id, omitempty"
+	string item_id = 2; 		// @gotags: default:"" bson:"item_id, omitempty"
+	string item_type = 3; 		// @gotags: default:"" bson:"item_type, omitempty"
+	string item_subtype = 4; 	// @gotags: default:"" bson:"item_subtype, omitempty"
+	string entity = 5; 			// @gotags: bson:"entity, omitempty"
+	string name = 6; 			// @gotags: default:"" bson:"name, omitempty"
+	int32  num = 7; 			// @gotags: default:"" bson:"num, omitempty"
+	string description = 8; 	// @gotags: default:"" bson:"description, omitempty"
+	Stats  stats = 9; 			// @gotags: bson:"stats, omitempty"
+	float  base_value = 10; 	// @gotags: bson:"base_value, omitempty"
+}
+message Stats {
+	float strength = 1; 		// @gotags: default:"0" bson:"strength, omitempty"
+	float intelligence = 2; 	// @gotags: default:"0" bson:"intelligence, omitempty"
+	float dexterity = 3; 		// @gotags: default:"0" bson:"dexterity, omitempty"
+	float charisma = 4; 		// @gotags: default:"0" bson:"charisma, omitempty"
+	float luck = 5; 			// @gotags: default:"0" bson:"luck, omitempty"
+	float health = 6; 			// @gotags: default:"0" bson:"health, omitempty"
+	float mana = 7; 			// @gotags: default:"0" bson:"mana, omitempty"
+	float attack = 8; 			// @gotags: default:"0" bson:"attack, omitempty"
+	float magicAttack = 9; 		// @gotags: default:"0" bson:"magicAttack, omitempty"
+	float defense = 10; 		// @gotags: default:"0" bson:"defense, omitempty"
+	float magicDefense = 11;	// @gotags: default:"0" bson:"magicDefense, omitempty"
+	float armor = 12; 			// @gotags: default:"0" bson:"armor, omitempty"
+	float evasion = 13; 		// @gotags: default:"0" bson:"evasion, omitempty"
+	float accuracy = 14; 		// @gotags: default:"0" bson:"accuracy, omitempty"
+	float agility = 15; 		// @gotags: default:"0" bson:"agility, omitempty"
+	float fireRes = 16; 		// @gotags: default:"0" bson:"fireRes, omitempty"
+	float waterRes = 17; 		// @gotags: default:"0" bson:"waterRes, omitempty"
+	float earthRes = 18; 		// @gotags: default:"0" bson:"earthRes, omitempty"
+	float windRes = 19; 		// @gotags: default:"0" bson:"windRes, omitempty"
+	float iceRes = 20; 			// @gotags: default:"0" bson:"iceRes, omitempty"
+	float energyRes = 21; 		// @gotags: default:"0" bson:"energyRes, omitempty"
+	float natureRes = 22; 		// @gotags: default:"0" bson:"natureRes, omitempty"
+	float poisonRes = 23; 		// @gotags: default:"0" bson:"poisonRes, omitempty"
+	float metalRes = 24; 		// @gotags: default:"0" bson:"metalRes, omitempty"
+	float lightRes = 25; 		// @gotags: default:"0" bson:"lightRes, omitempty"
+	float darkRes = 26; 		// @gotags: default:"0" bson:"darkRes, omitempty"
+}
+message ItemRange {
+	repeated string collection = 1; // @gotags: bson:"collection, omitempty"
+}
+message ShopItem {
+	string uuid = 1; 	// @gotags: bson:"uuid, omitempty"
+	Item shop_item = 2; // @gotags: bson:"shop_item, omitempty"
+	float price = 3; 	// @gotags: bson:"price, omitempty"
+}
+message Spell {
+	string objectID = 1; 		// @gotags: bson:"_id, omitempty"
+	string spell_id = 2; 		// @gotags: bson:"spell_id, omitempty"
+	string name = 3; 			// @gotags: bson:"name, omitempty"
+	int32  mana_cost = 4; 		// @gotags: bson:"mana_cost, omitempty"
+	string spell_type = 5; 		// @gotags: bson:"spell_type, omitempty"
+	string targetable = 6; 		// @gotags: bson:"targetable, omitempty"
+	string spell = 7; 			// @gotags: bson:"spell, omitempty"
+	int32  damage = 8; 			// @gotags: bson:"damage, omitempty"
+	string element = 9; 		// @gotags: bson:"element", omitempty"
+	int32  level = 10; 			// @gotags: bson:"level, omitempty"
+	int32  spell_duration = 11; // @gotags: bson:"spell_duration, omitempty"
+	int32  init_block = 12; 	// @gotags: bson:"init_block, omitempty"
+	int32  block_count = 13; 	// @gotags: bson:"block_count, omitempty"
+	Effect effect = 14; 		// @gotags: bson:"effect, omitempty"
+}
+message Effect{
+	string name = 1; 				// @gotags: bson:"name, omitempty"
+	string effect_id = 2; 			// @gotags: bson:"effect_id, omitempty"
+	string element = 3; 			// @gotags: bson:"element, omitempty"
+	string effect_type = 4; 		// @gotags: bson:"effect_type, omitempty"
+	string buff_element = 5; 		// @gotags: bson:"buff_element, omitempty"
+	string debuff_element = 6; 		// @gotags: bson:"debuff_element, omitempty"
+	int32  damage_per_cycle = 7; 	// @gotags: bson:"damage_per_cycle, omitempty"
+	int32  lifetime = 8; 			// @gotags: bson:"lifetime, omitempty"
+	int32  ticks_left = 9; 			// @gotags: bson:"ticks_left, omitempty"
+	int32  scalar = 10; 			// @gotags: bson:"scalar, omitempty"
+	string description = 11; 		// @gotags: bson:"description, omitempty"
+	string effector = 12; 			// @gotags: bson:"effector, omitempty"
+}
+message Client{
+	string uuid = 1; 			// @gotags: bson:"uuid, omitempty"
+	string connect_time = 2; 	// @gotags: bson:"connect_time, omitempty"
+	string udp_addr = 3; 		// @gotags: bson:"udp_addr, omitempty"
+	string broadcast_addr = 4; 	// @gotags: bson:"broadcast_addr, omitempty"
+	Position position = 5; 		// @gotags: bson:"position, omitempty"
+}
+message Position{
+	float pos_x = 1; // @gotags: default="0" bson:"pos_x, omitempty"
+	float pos_y = 2; // @gotags: default="1" bson:"pos_y, omitempty"
+	float pos_z = 3; // @gotags: default="0" bson:"pos_z, omitempty"
+}
+message BattlePacket{
+	string battle_id = 1; 			// @gotags: default:"" bson:"battle_id, omitempty"
+	Profile player_profile = 2; 	// @gotags: default:"" bson:"player_profile, omitempty"
+	repeated Monster monsters = 3; 	// @gotags: default:"" bson:"monsters, omitempty"
+	int32 monster_quantity = 4; 	// @gotags: default:"0" bson:"monster_quantity, omitempty"
+}
+message LoginSecretPacket{
+	User user_data = 1; 		// @gotags: default:"" bson:"user_data, omitempty"
+	Profile player_profile = 2; // @gotags: default:"" bson:"player_profile, omitempty"
+	Region region_data = 3; 	// @gotags: default:"" bson:"region_data, omitempty"
+}
+message Region{
+	string objectID = 1; 		// @gotags: bson:"_id, omitempty"
+	string region_id = 2; 		// @gotags: default:"" bson:"region_id, omitempty"
+	string region_name = 3; 	// @gotags: default:"" bson:"region_name, omitempty"
+	repeated string levels = 4; // @gotags: bson:"levels, omitempty"
+}
+message Level{
+	string objectID = 1; 			// @gotags: bson:"_id, omitempty"
+	string level_id = 2; 			// @gotags: bson:"_id, omitempty"
+	string level_name = 3; 			// @gotags: bson:"_id, omitempty"
+	string zip = 4; 				// @gotags: bson:"_id, omitempty"
+	repeated string monsters = 5; 	// @gotags: bson:"_id, omitempty"
+	repeated string residents = 6; 	// @gotags: bson:"_id, omitempty"
+}
+message Resident{
+	string objectID = 1; 			// @gotags: bson:"_id, omitempty"
+	string npc_id = 2; 				// @gotags: default:"" bson:"npcID, omitempty"
+	string npc_name = 3; 			// @gotags: default:"" bson:"npcName, omitempty"
+	repeated string dialogue = 4; 	// @gotags: default:"" bson:dialogue, omitempty"
+}
+message ShopKeeper{
+	string objectID = 1; 				// @gotags: bson:"_id, omitempty"
+	string npc_id = 2; 					// @gotags: default:"" bson:"npcID, omitempty"
+	repeated ShopItem catalogue = 3; 	// @gotags: default:"" bson:"catalogue, omitempty"
+	Purse purse = 4; 					// @gotags: default:"" bson:"purse, omitempty"
+}
+message Monster{
+	string objectID = 1; 			// @gotags: bson:"_id, omitempty"
+	string mob_id = 2; 				// @gotags: default:"" bson:"mobID, omitempty"
+	string monster_type = 3; 		// @gotags: default:"" bson:"monsterType, omitempty"
+	int32 gold_gain = 4; 			// @gotags: default:"" bson:"goldGain, omitempty"
+	int32 experience_gain = 5; 		// @gotags: default:"" bson:"experienceGain, omitempty"
+	Profile profile = 6; 			// @gotags: default:"" bson:"mobVitals, omitempty"
+	Stats stats = 7; 				// @gotags: default:"" bson:"stats, omitempty"
+	repeated Spell actions = 8; 	// @gotags: default:"" bson:"attackActions, omitempty"
+	string element = 9; 			// @gotags: default:"" bson:"element, omitempty"
+	repeated string regions = 10; 	// @gotags: bson:"regions, omitempty"
+}
+message RegionData{
+	Region region = 1; 			// @gotags: default:"" bson:"region, omitempty"
+	LevelData level_data = 2; 	// @gotags: default:"" bson:"level, omitempty"
+}
+message LevelData{
+	Level level = 1; 					// @gotags: default:"" bson:"level, omitempty"
+	repeated Resident residents = 2; 	// @gotags: default:"" bson:"residents", omitempty"
+}
+message Sessions{
+	 map<string,BattleSession> battle_sessions = 1; // @gotags: default:"" bson:"battle_sessions, omitempty"
+}
+message BattleSession{
+	string battle_id = 1;				// @gotags: default:"" bson:"battle_id, omitempty"
+	int32 status = 2; 					// @gotags: default:"0" bson:"status, omitempty"
+	repeated Monster monsters = 3; 		// @gotags: default:"" bson:"monsters, omitempty"
+	repeated int32 reward_matrix = 4; 	// @gotags: default:"" bson:"reward_matrix, omitempty"
+	Reward reward = 5; 					// @gotags: default:"" bson:"reward, omitempty"
+}
+message Reward{
+    float gold = 1; 		// @gotags: default:"0" bson:"gold, omitempty"
+    float exp = 2; 			// @gotags: default:"0" bson:"exp, omitempty"
+    float total_exp = 3; 	// @gotags: default:"0" bson:"total_exp, omitempty"
+}
+message Packet{
+	string uuid = 1; 			// @gotags: default:"" bson:"packet_id, omitempty"
+	string packet_code = 2; 	// @gotags: default:"" bson:"packet_code, omitempty"
+	bool chain = 3; 			// @gotags: default:"" bson:"chain, omitempty"
+	string service_type = 4; 	// @gotags: default:"" bson:"service_type, omitempty"
+	string content = 5; 		// @gotags: default:"" bson:"content, omitempty"
+}
+message PlayerPacketCache{
+	map<string,Packet> packet_cache = 1; // @gotags: default:"" bson:"packet_cache, omitempty"
+}
